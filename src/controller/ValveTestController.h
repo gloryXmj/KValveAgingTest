@@ -6,12 +6,12 @@
 
 #include <QObject>
 #include <QQueue>
-#include <QTimer>
 #include <QVector>
 
 #include <optional>
 
 class SerialPortService;
+class QTimer;
 
 class ValveTestController : public QObject
 {
@@ -53,6 +53,7 @@ private:
 
     void trySendNext();
     void completeInFlight();
+    bool ackMatchesInFlight(const DecodedFrame &frame) const;
     QString describeOutgoing(const CommandPacket &packet) const;
     QString describeAck(const DecodedFrame &frame) const;
     QString formatVersion(quint16 data16) const;
@@ -60,6 +61,6 @@ private:
     SerialPortService *m_serialService = nullptr;
     QQueue<PendingCommand> m_queue;
     std::optional<PendingCommand> m_inFlight;
-    QTimer m_ackTimer;
+    QTimer *m_ackTimer = nullptr;
     int m_ackTimeoutMs = 500;
 };

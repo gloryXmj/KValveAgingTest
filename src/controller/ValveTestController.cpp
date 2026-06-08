@@ -8,6 +8,7 @@
 #include "src/serial/SerialPortTypes.h"
 
 #include <QStringList>
+#include <QTimer>
 
 namespace
 {
@@ -15,15 +16,21 @@ QString formatTimingMilliseconds(const quint16 rawValue)
 {
     return QStringLiteral("%1 ms").arg(QString::number(double(rawValue) * 0.05, 'f', 2));
 }
+
+bool ackCarriesDynamicData(const CommandPacket &packet)
+{
+    return packet.purpose == CommandPurpose::VersionQuery
+        || packet.purpose == CommandPurpose::ChannelAlarm;
+}
 }
 
 ValveTestController::ValveTestController(SerialPortService *serialService, QObject *parent)
     : QObject(parent)
     , m_serialService(serialService)
+    , m_ackTimer(new QTimer(this))
 {
-    m_ackTimer.setSingleShot(true);
-
-    connect(&m_ackTimer, &QTimer::timeout, this, &ValveTestController::handleAckTimeout);
+    m_ackTimer->setSingleShot(true);
+    connect(m_ackTimer, &QTimer::timeout, this, &ValveTestController::handleAckTimeout);
 
     if (m_serialService != nullptr) {
         connect(m_serialService, &SerialPortService::ackFrameReceived, this, &ValveTestController::handleAckFrame);
@@ -52,7 +59,9 @@ void ValveTestController::closePort()
     m_queue.clear();
     if (m_inFlight.has_value()) {
         m_inFlight.reset();
-        m_ackTimer.stop();
+        if (m_ackTimer != nullptr) {
+            m_ackTimer->stop();
+        }
         emit busyChanged(false);
     }
 }
@@ -76,7 +85,11 @@ void ValveTestController::enqueueCommand(const CommandPacket &packet, const QStr
 {
     if (SecurityPolicy::requiresPassword(packet.command) && !SecurityPolicy::isPasswordValid(password)) {
         emit commandRejected(QStringLiteral("密码校验失败。"));
-        emit logGenerated(QStringLiteral("AUTH"), QString(), QStringLiteral("%1因密码校验失败未执行。").arg(CommandMap::commandName(packet.command)));
+        emit logGenerated(
+            QStringLiteral("AUTH"),
+            QString(),
+            QStringLiteral("%1 因密码校验失败未执行。").arg(CommandMap::commandName(packet.command))
+        );
         return;
     }
 
@@ -116,7 +129,7 @@ void ValveTestController::handleAckFrame(const QByteArray &frame)
         return;
     }
 
-    if (decoded->command != m_inFlight->packet.command || decoded->data16 != m_inFlight->packet.data16) {
+    if (!ackMatchesInFlight(*decoded)) {
         emit logGenerated(
             QStringLiteral("WARN"),
             frameHex,
@@ -145,7 +158,7 @@ void ValveTestController::handleAckTimeout()
     emit logGenerated(
         QStringLiteral("TIMEOUT"),
         ProtocolCodec::toHexString(m_inFlight->frame),
-        QStringLiteral("%1等待回包超时。").arg(describeOutgoing(m_inFlight->packet))
+        QStringLiteral("%1 等待回包超时。").arg(describeOutgoing(m_inFlight->packet))
     );
 
     completeInFlight();
@@ -175,7 +188,9 @@ void ValveTestController::trySendNext()
     m_inFlight = pending;
     emit busyChanged(true);
     emit logGenerated(QStringLiteral("TX"), ProtocolCodec::toHexString(pending.frame), describeOutgoing(pending.packet));
-    m_ackTimer.start(m_ackTimeoutMs);
+    if (m_ackTimer != nullptr) {
+        m_ackTimer->start(m_ackTimeoutMs);
+    }
 }
 
 void ValveTestController::completeInFlight()
@@ -184,9 +199,28 @@ void ValveTestController::completeInFlight()
         return;
     }
 
-    m_ackTimer.stop();
+    if (m_ackTimer != nullptr) {
+        m_ackTimer->stop();
+    }
     m_inFlight.reset();
     emit busyChanged(false);
+}
+
+bool ValveTestController::ackMatchesInFlight(const DecodedFrame &frame) const
+{
+    if (!m_inFlight.has_value()) {
+        return false;
+    }
+
+    if (frame.command != m_inFlight->packet.command) {
+        return false;
+    }
+
+    if (ackCarriesDynamicData(m_inFlight->packet)) {
+        return true;
+    }
+
+    return frame.data16 == m_inFlight->packet.data16;
 }
 
 QString ValveTestController::describeOutgoing(const CommandPacket &packet) const
@@ -198,18 +232,22 @@ QString ValveTestController::describeOutgoing(const CommandPacket &packet) const
         }
     }
 
-    if (packet.command == CommandMap::kVersionQuery) {
+    if (packet.purpose == CommandPurpose::VersionQuery || packet.command == CommandMap::kVersionQuery) {
         return QStringLiteral("请求读取固件版本");
     }
 
+    if (packet.purpose == CommandPurpose::ChannelAlarm || packet.command == CommandMap::kChannelAlarm) {
+        return QStringLiteral("请求读取通道状态");
+    }
+
     if (CommandMap::isProtectedTimingCommand(packet.command)) {
-        return QStringLiteral("%1设置为 %2，实际下发原始值 %3")
+        return QStringLiteral("%1 设置为 %2，实际下发原始值 %3")
             .arg(CommandMap::commandName(packet.command))
             .arg(formatTimingMilliseconds(packet.data16))
             .arg(packet.data16);
     }
 
-    return QStringLiteral("%1设置为 %2").arg(CommandMap::commandName(packet.command)).arg(packet.data16);
+    return QStringLiteral("%1 设置为 %2").arg(CommandMap::commandName(packet.command)).arg(packet.data16);
 }
 
 QString ValveTestController::describeAck(const DecodedFrame &frame) const
@@ -248,13 +286,13 @@ QString ValveTestController::describeAck(const DecodedFrame &frame) const
     }
 
     if (CommandMap::isProtectedTimingCommand(frame.command)) {
-        return QStringLiteral("%1已确认：%2，回包原始值 %3")
+        return QStringLiteral("%1 已确认：%2，回包原始值 %3")
             .arg(CommandMap::commandName(frame.command))
             .arg(formatTimingMilliseconds(frame.data16))
             .arg(frame.data16);
     }
 
-    return QStringLiteral("%1已确认。").arg(CommandMap::commandName(frame.command));
+    return QStringLiteral("%1 已确认。").arg(CommandMap::commandName(frame.command));
 }
 
 QString ValveTestController::formatVersion(const quint16 data16) const

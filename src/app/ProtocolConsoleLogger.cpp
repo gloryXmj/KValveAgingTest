@@ -14,7 +14,6 @@ void ProtocolConsoleLogger::printLogLine(const QString &direction, const QString
         .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz")), direction, hex, description);
 
     QTextStream stream(stdout);
-    stream << line << Qt::endl;
     stream << line << '\n';
     stream.flush();
 }

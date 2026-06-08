@@ -1,8 +1,16 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/toolchain/toolchain_aarch64_up_3588.cmake") 
 set(KVALVE_DEFAULT_TOOLCHAIN_FILE
     "${CMAKE_CURRENT_LIST_DIR}/toolchain/toolchain_aarch64_up_3588.cmake")
 
+if (NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    set(CMAKE_TOOLCHAIN_FILE
+        "${KVALVE_DEFAULT_TOOLCHAIN_FILE}"
+        CACHE FILEPATH "Toolchain file for ARM64 builds")
+endif()
+
+message(STATUS "Using toolchain file: ${CMAKE_TOOLCHAIN_FILE}")
 project(KValveAgingTestTool LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)

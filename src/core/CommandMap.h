@@ -5,8 +5,8 @@
 
 namespace CommandMap
 {
-constexpr quint8 kWriteHeader = 0xAA;
-constexpr quint8 kAckHeader = 0xA0;
+constexpr quint8 kWriteHeader = 0xA0;
+constexpr quint8 kAckHeader = 0xAA;
 
 constexpr quint8 kValveSwitch = 0x00;
 constexpr quint8 kTriggerMode = 0x01;

@@ -62,6 +62,10 @@ add_library(valve_ui
     src/ui/MainWindow.cpp
     src/ui/PasswordDialog.h
     src/ui/PasswordDialog.cpp
+    src/ui/NumericInputDialog.h
+    src/ui/NumericInputDialog.cpp
+    src/ui/TouchSpinBoxWidget.h
+    src/ui/TouchSpinBoxWidget.cpp
     src/ui/ChannelCardWidget.h
     src/ui/ChannelCardWidget.cpp
     src/ui/ValveGridWidget.h

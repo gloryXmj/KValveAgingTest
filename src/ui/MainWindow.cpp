@@ -10,6 +10,7 @@
 #include "src/ui/LogPanelWidget.h"
 #include "src/ui/ParameterPanelWidget.h"
 #include "src/ui/PasswordDialog.h"
+#include "src/ui/TouchSpinBoxWidget.h"
 
 #include <QCloseEvent>
 #include <QComboBox>
@@ -18,6 +19,7 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QListView>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSpinBox>
@@ -60,6 +62,21 @@ bool isValveFeedbackLog(const QString &direction, const QString &hex)
     const auto command = extractProtocolCommand(hex);
     return command.has_value() && CommandMap::isValveCommand(*command);
 }
+
+void prepareTouchComboBox(QComboBox *comboBox, const int minWidth, const int maxVisibleItems = 10)
+{
+    if (comboBox == nullptr) {
+        return;
+    }
+
+    auto *view = new QListView(comboBox);
+    view->setSpacing(4);
+    view->setUniformItemSizes(true);
+    comboBox->setView(view);
+    comboBox->setMinimumHeight(44);
+    comboBox->setMinimumWidth(minWidth);
+    comboBox->setMaxVisibleItems(maxVisibleItems);
+}
 }
 
 MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWidget *parent)
@@ -69,15 +86,17 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
 {
     if (m_settings != nullptr) {
         m_savedSerialSettings = m_settings->loadSerialSettings();
+        m_lastConnectedSerialSettings = m_settings->loadLastConnectedSerialSettings();
         m_savedControlParameters = m_settings->loadControlParameters();
         m_savedVisibleValveCount = m_settings->loadVisibleValveCount();
     } else {
+        m_lastConnectedSerialSettings = SerialPortSettings{};
         m_savedControlParameters = ControlParameters{};
         m_savedVisibleValveCount = CommandMap::kValvesPerChannel;
     }
 
-    m_autoConnectPending = !m_savedSerialSettings.portName.isEmpty();
-    m_autoApplyGeneralParametersPending = m_autoConnectPending;
+    m_autoConnectPending = !m_lastConnectedSerialSettings.portName.isEmpty();
+    m_autoApplyGeneralParametersPending = false;
 
     m_savedVisibleValveCount = qBound(
         1,
@@ -109,6 +128,7 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
 
             if (connected && m_settings != nullptr) {
                 m_settings->saveSerialSettings(currentSerialSettings());
+                m_settings->saveLastConnectedSerialSettings(currentSerialSettings());
             }
             if (connected && m_autoApplyGeneralParametersPending && m_parameterPanel != nullptr) {
                 enqueueCommands(m_parameterPanel->generalParameterCommands());
@@ -138,6 +158,9 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
             }
         }, Qt::QueuedConnection);
         connect(m_runtime, &SerialWorkerRuntime::commandRejected, this, [this](const QString &reason) {
+            if (!m_connected) {
+                m_autoApplyGeneralParametersPending = false;
+            }
             statusBar()->showMessage(reason, 5000);
         }, Qt::QueuedConnection);
         connect(m_runtime, &SerialWorkerRuntime::versionReceived, this, [this](const QString &versionText) {
@@ -225,7 +248,7 @@ void MainWindow::buildUi()
     portLabel->setStyleSheet(topBarLabelStyle);
     topLayout->addWidget(portLabel);
     m_portCombo = new QComboBox(topBar);
-    m_portCombo->setMinimumWidth(220);
+    prepareTouchComboBox(m_portCombo, 220, 12);
     topLayout->addWidget(m_portCombo);
 
     auto *baudLabel = new QLabel(QStringLiteral("波特率"), topBar);
@@ -243,6 +266,7 @@ void MainWindow::buildUi()
         QStringLiteral("921600"),
     });
     m_baudCombo->setCurrentText(QStringLiteral("115200"));
+    prepareTouchComboBox(m_baudCombo, 136, 8);
     topLayout->addWidget(m_baudCombo);
 
     auto *visibleValveLabel = new QLabel(QStringLiteral("显示阀数"), topBar);
@@ -252,8 +276,8 @@ void MainWindow::buildUi()
     m_visibleValveCountSpin = new QSpinBox(topBar);
     m_visibleValveCountSpin->setRange(1, CommandMap::kValvesPerChannel);
     m_visibleValveCountSpin->setValue(m_savedVisibleValveCount);
-    m_visibleValveCountSpin->setFixedWidth(88);
-    topLayout->addWidget(m_visibleValveCountSpin);
+    topLayout->addWidget(
+        new TouchSpinBoxWidget(m_visibleValveCountSpin, 88, QStringLiteral("输入显示阀数"), topBar));
 
     auto *refreshButton = new QPushButton(QStringLiteral("刷新串口"), topBar);
     refreshButton->setProperty("secondary", true);
@@ -291,9 +315,14 @@ void MainWindow::buildUi()
     upperLayout->setContentsMargins(0, 0, 0, 0);
     upperLayout->setSpacing(16);
 
-    m_parameterPanel = new ParameterPanelWidget(upperWidget);
-    m_parameterPanel->setFixedWidth(420);
-    m_parameterPanel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    auto *parameterScroll = new QScrollArea(upperWidget);
+    parameterScroll->setWidgetResizable(true);
+    parameterScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    parameterScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    parameterScroll->setFixedWidth(448);
+
+    m_parameterPanel = new ParameterPanelWidget(parameterScroll);
+    m_parameterPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     connect(m_parameterPanel, &ParameterPanelWidget::commandRequested, this, &MainWindow::handleCommandRequest);
     connect(m_parameterPanel, &ParameterPanelWidget::timingBatchRequested, this, &MainWindow::handleTimingBatchRequest);
     connect(m_parameterPanel, &ParameterPanelWidget::controlParametersChanged, this, [this](const ControlParameters &parameters) {
@@ -301,7 +330,8 @@ void MainWindow::buildUi()
             m_settings->saveControlParameters(parameters);
         }
     });
-    upperLayout->addWidget(m_parameterPanel);
+    parameterScroll->setWidget(m_parameterPanel);
+    upperLayout->addWidget(parameterScroll);
 
     m_cardsScroll = new QScrollArea(upperWidget);
     m_cardsScroll->setWidgetResizable(true);
@@ -454,11 +484,17 @@ void MainWindow::handlePortsReady(const QVector<SerialPortDescriptor> &ports)
     }
 
     if (m_autoConnectPending && !m_connected) {
-        const QString portName = currentSerialSettings().portName;
-        if (!portName.isEmpty()) {
-            m_autoConnectPending = false;
-            statusBar()->showMessage(QStringLiteral("正在自动连接串口..."), 3000);
-            emit requestOpenPort(currentSerialSettings());
+        m_autoConnectPending = false;
+
+        const int autoConnectIndex = m_portCombo->findData(m_lastConnectedSerialSettings.portName);
+        if (autoConnectIndex >= 0) {
+            m_portCombo->setCurrentIndex(autoConnectIndex);
+            m_autoApplyGeneralParametersPending = true;
+            statusBar()->showMessage(QStringLiteral("正在自动连接上次成功连接的串口..."), 3000);
+            emit requestOpenPort(m_lastConnectedSerialSettings);
+        } else {
+            m_autoApplyGeneralParametersPending = false;
+            statusBar()->showMessage(QStringLiteral("未找到上次成功连接的串口，已跳过自动连接。"), 5000);
         }
     }
 }

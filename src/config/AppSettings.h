@@ -17,6 +17,8 @@ public:
 
     SerialPortSettings loadSerialSettings() const;
     void saveSerialSettings(const SerialPortSettings &settings) const;
+    SerialPortSettings loadLastConnectedSerialSettings() const;
+    void saveLastConnectedSerialSettings(const SerialPortSettings &settings) const;
     ControlParameters loadControlParameters() const;
     void saveControlParameters(const ControlParameters &parameters) const;
     int loadVisibleValveCount() const;

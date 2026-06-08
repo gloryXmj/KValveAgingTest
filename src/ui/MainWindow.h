@@ -54,6 +54,7 @@ private:
     SerialWorkerRuntime *m_runtime = nullptr;
     AppSettings *m_settings = nullptr;
     SerialPortSettings m_savedSerialSettings;
+    SerialPortSettings m_lastConnectedSerialSettings;
     ControlParameters m_savedControlParameters;
     int m_savedVisibleValveCount = 0;
     bool m_connected = false;

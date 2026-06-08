@@ -31,9 +31,10 @@ signals:
 private:
     void emitParameterCommand(quint8 command, quint16 data16, bool passwordRequired, CommandPurpose purpose = CommandPurpose::ParameterWrite);
     void emitControlParametersChanged();
+    void updateValveSwitchButton();
     static quint16 timingMsToRaw(double milliseconds);
 
-    QComboBox *m_valveSwitch = nullptr;
+    QPushButton *m_valveSwitch = nullptr;
     QComboBox *m_triggerMode = nullptr;
     QSpinBox *m_blowCount = nullptr;
     QSpinBox *m_blowInterval = nullptr;

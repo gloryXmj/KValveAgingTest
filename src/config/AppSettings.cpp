@@ -29,6 +29,28 @@ void AppSettings::saveSerialSettings(const SerialPortSettings &settings) const
     m_settings.setValue(QStringLiteral("serial/flowControl"), settings.flowControl);
 }
 
+SerialPortSettings AppSettings::loadLastConnectedSerialSettings() const
+{
+    SerialPortSettings settings;
+    settings.portName = m_settings.value(QStringLiteral("serial/lastConnectedPortName")).toString();
+    settings.baudRate = m_settings.value(QStringLiteral("serial/lastConnectedBaudRate"), 115200).toInt();
+    settings.dataBits = m_settings.value(QStringLiteral("serial/lastConnectedDataBits"), 8).toInt();
+    settings.stopBits = m_settings.value(QStringLiteral("serial/lastConnectedStopBits"), 1).toInt();
+    settings.parity = m_settings.value(QStringLiteral("serial/lastConnectedParity"), 0).toInt();
+    settings.flowControl = m_settings.value(QStringLiteral("serial/lastConnectedFlowControl"), 0).toInt();
+    return settings;
+}
+
+void AppSettings::saveLastConnectedSerialSettings(const SerialPortSettings &settings) const
+{
+    m_settings.setValue(QStringLiteral("serial/lastConnectedPortName"), settings.portName);
+    m_settings.setValue(QStringLiteral("serial/lastConnectedBaudRate"), settings.baudRate);
+    m_settings.setValue(QStringLiteral("serial/lastConnectedDataBits"), settings.dataBits);
+    m_settings.setValue(QStringLiteral("serial/lastConnectedStopBits"), settings.stopBits);
+    m_settings.setValue(QStringLiteral("serial/lastConnectedParity"), settings.parity);
+    m_settings.setValue(QStringLiteral("serial/lastConnectedFlowControl"), settings.flowControl);
+}
+
 ControlParameters AppSettings::loadControlParameters() const
 {
     ControlParameters parameters;

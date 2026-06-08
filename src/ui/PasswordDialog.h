@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QDialog>
+#include <QVector>
 
 class QLineEdit;
+class QPushButton;
 
 class PasswordDialog : public QDialog
 {
@@ -15,5 +17,14 @@ public:
     void setPasswordText(const QString &text);
 
 private:
+    void appendCharacter(const QString &character, bool letterKey);
+    void backspace();
+    void clearPassword();
+    void toggleShift();
+    void refreshShiftState();
+
     QLineEdit *m_passwordEdit = nullptr;
+    QPushButton *m_shiftButton = nullptr;
+    QVector<QPushButton *> m_letterButtons;
+    bool m_shiftEnabled = false;
 };

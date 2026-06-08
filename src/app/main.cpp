@@ -41,7 +41,7 @@ int main(int argc, char *argv[])
     serialThread.start();
 
     MainWindow window(runtime, &settings);
-    window.showMinimized();
+    window.showMaximized();
 
     const int exitCode = app.exec();
 

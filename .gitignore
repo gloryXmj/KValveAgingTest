@@ -1,0 +1,9 @@
+.vscode/
+build/
+build-*/
+build_*/
+*.user
+*.obj
+*.pdb
+*.ilk
+*.idb

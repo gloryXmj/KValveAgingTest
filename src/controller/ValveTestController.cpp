@@ -16,12 +16,6 @@ QString formatTimingMilliseconds(const quint16 rawValue)
 {
     return QStringLiteral("%1 ms").arg(QString::number(double(rawValue) * 0.05, 'f', 2));
 }
-
-bool ackCarriesDynamicData(const CommandPacket &packet)
-{
-    return packet.purpose == CommandPurpose::VersionQuery
-        || packet.purpose == CommandPurpose::ChannelAlarm;
-}
 }
 
 ValveTestController::ValveTestController(SerialPortService *serialService, QObject *parent)
@@ -112,24 +106,31 @@ void ValveTestController::handleAckFrame(const QByteArray &frame)
         return;
     }
 
-    emit logGenerated(QStringLiteral("ACK"), frameHex, describeAck(*decoded));
+    emit logGenerated(QStringLiteral("RX"), frameHex, describeAck(*decoded));
 
-    if (CommandMap::isValveCommand(decoded->command)) {
+    const bool hasInFlight = m_inFlight.has_value();
+    const bool isValveFeedback = CommandMap::isValveCommand(decoded->command);
+    const bool matchesInFlight = hasInFlight && ackMatchesInFlight(*decoded);
+
+    if (decoded->command == CommandMap::kChannelAlarm) {
+        emit channelAlarmUpdated(ValveAddressResolver::resolveAbnormalChannels(decoded->data16));
+    } else if (decoded->command == CommandMap::kVersionQuery) {
+        emit versionReceived(formatVersion(decoded->data16));
+    } else if (isValveFeedback) {
         const auto resolved = ValveAddressResolver::resolveValveAck(decoded->command, decoded->data16);
         if (resolved.has_value()) {
             emit valveActionConfirmed(resolved->channel, resolved->valveNumbers);
         }
-    } else if (decoded->command == CommandMap::kChannelAlarm) {
-        emit channelAlarmUpdated(ValveAddressResolver::resolveAbnormalChannels(decoded->data16));
-    } else if (decoded->command == CommandMap::kVersionQuery) {
-        emit versionReceived(formatVersion(decoded->data16));
     }
 
-    if (!m_inFlight.has_value()) {
+    if (!hasInFlight) {
         return;
     }
 
-    if (!ackMatchesInFlight(*decoded)) {
+    if (!matchesInFlight) {
+        if (isValveFeedback) {
+            return;
+        }
         emit logGenerated(
             QStringLiteral("WARN"),
             frameHex,
@@ -212,15 +213,7 @@ bool ValveTestController::ackMatchesInFlight(const DecodedFrame &frame) const
         return false;
     }
 
-    if (frame.command != m_inFlight->packet.command) {
-        return false;
-    }
-
-    if (ackCarriesDynamicData(m_inFlight->packet)) {
-        return true;
-    }
-
-    return frame.data16 == m_inFlight->packet.data16;
+    return frame.command == m_inFlight->packet.command;
 }
 
 QString ValveTestController::describeOutgoing(const CommandPacket &packet) const

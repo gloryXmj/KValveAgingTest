@@ -1,5 +1,6 @@
 #pragma once
 
+#include "src/core/ControlParameters.h"
 #include "src/serial/SerialPortTypes.h"
 
 #include <QByteArray>
@@ -16,6 +17,8 @@ public:
 
     SerialPortSettings loadSerialSettings() const;
     void saveSerialSettings(const SerialPortSettings &settings) const;
+    ControlParameters loadControlParameters() const;
+    void saveControlParameters(const ControlParameters &parameters) const;
     int loadVisibleValveCount() const;
     void saveVisibleValveCount(int count) const;
 

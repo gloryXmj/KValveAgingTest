@@ -25,22 +25,23 @@ int main(int argc, char *argv[])
     AppSettings settings;
     QThread serialThread;
     auto *runtime = new SerialWorkerRuntime();
+    auto *consoleLogger = new ProtocolConsoleLogger();
     runtime->moveToThread(&serialThread);
-
-    ProtocolConsoleLogger consoleLogger;
+    consoleLogger->moveToThread(&serialThread);
     QObject::connect(&serialThread, &QThread::finished, runtime, &QObject::deleteLater);
+    QObject::connect(&serialThread, &QThread::finished, consoleLogger, &QObject::deleteLater);
     QObject::connect(
         runtime,
         &SerialWorkerRuntime::logGenerated,
-        &consoleLogger,
+        consoleLogger,
         &ProtocolConsoleLogger::printLogLine,
-        Qt::QueuedConnection
+        Qt::AutoConnection
     );
 
     serialThread.start();
 
     MainWindow window(runtime, &settings);
-    window.show();
+    window.showMinimized();
 
     const int exitCode = app.exec();
 

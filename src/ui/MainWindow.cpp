@@ -3,6 +3,7 @@
 #include "src/app/SerialWorkerRuntime.h"
 #include "src/config/AppSettings.h"
 #include "src/core/CommandMap.h"
+#include "src/core/SecurityPolicy.h"
 #include "src/core/ValveAddressResolver.h"
 #include "src/serial/SerialPortTypes.h"
 #include "src/ui/ChannelCardWidget.h"
@@ -26,6 +27,41 @@
 #include <QStringList>
 #include <QVBoxLayout>
 
+#include <optional>
+
+namespace
+{
+std::optional<quint8> extractProtocolCommand(const QString &hex)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+    const QStringList parts = hex.split(QChar(' '), Qt::SkipEmptyParts);
+#else
+    const QStringList parts = hex.split(QChar(' '), QString::SkipEmptyParts);
+#endif
+    if (parts.size() < 2) {
+        return std::nullopt;
+    }
+
+    bool ok = false;
+    const int command = parts.at(1).toInt(&ok, 16);
+    if (!ok) {
+        return std::nullopt;
+    }
+
+    return quint8(command);
+}
+
+bool isValveFeedbackLog(const QString &direction, const QString &hex)
+{
+    if (direction != QStringLiteral("RX")) {
+        return false;
+    }
+
+    const auto command = extractProtocolCommand(hex);
+    return command.has_value() && CommandMap::isValveCommand(*command);
+}
+}
+
 MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWidget *parent)
     : QMainWindow(parent)
     , m_runtime(runtime)
@@ -33,10 +69,15 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
 {
     if (m_settings != nullptr) {
         m_savedSerialSettings = m_settings->loadSerialSettings();
+        m_savedControlParameters = m_settings->loadControlParameters();
         m_savedVisibleValveCount = m_settings->loadVisibleValveCount();
     } else {
+        m_savedControlParameters = ControlParameters{};
         m_savedVisibleValveCount = CommandMap::kValvesPerChannel;
     }
+
+    m_autoConnectPending = !m_savedSerialSettings.portName.isEmpty();
+    m_autoApplyGeneralParametersPending = m_autoConnectPending;
 
     m_savedVisibleValveCount = qBound(
         1,
@@ -69,11 +110,19 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
             if (connected && m_settings != nullptr) {
                 m_settings->saveSerialSettings(currentSerialSettings());
             }
+            if (connected && m_autoApplyGeneralParametersPending && m_parameterPanel != nullptr) {
+                enqueueCommands(m_parameterPanel->generalParameterCommands());
+                m_autoApplyGeneralParametersPending = false;
+            }
         }, Qt::QueuedConnection);
         connect(m_runtime, &SerialWorkerRuntime::logGenerated, this, [this](const QString &direction, const QString &hex, const QString &description) {
-            if (direction == QStringLiteral("ACK")) {
-                m_hasCommunicationFault = false;
-                updateChannelAlarmDisplay();
+            const bool valveFeedback = isValveFeedbackLog(direction, hex);
+
+            if (direction == QStringLiteral("RX")) {
+                if (m_hasCommunicationFault) {
+                    m_hasCommunicationFault = false;
+                    updateChannelAlarmDisplay();
+                }
             } else if (direction == QStringLiteral("ERR")
                 || direction == QStringLiteral("TIMEOUT")
                 || direction == QStringLiteral("WARN")) {
@@ -81,8 +130,12 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
                 updateChannelAlarmDisplay();
             }
 
-            m_logPanel->addLog(direction, hex, description);
-            statusBar()->showMessage(description, 5000);
+            if (!valveFeedback) {
+                m_logPanel->addLog(direction, hex, description);
+            }
+            if (direction != QStringLiteral("RX")) {
+                statusBar()->showMessage(description, 5000);
+            }
         }, Qt::QueuedConnection);
         connect(m_runtime, &SerialWorkerRuntime::commandRejected, this, [this](const QString &reason) {
             statusBar()->showMessage(reason, 5000);
@@ -91,8 +144,11 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
             m_firmwareValue->setText(versionText);
         }, Qt::QueuedConnection);
         connect(m_runtime, &SerialWorkerRuntime::valveActionConfirmed, this, [this](const int channel, const QList<int> &valves) {
-            if (channel >= 1 && channel <= m_channelCards.size()) {
-                m_channelCards[channel - 1]->pulseValves(valves);
+            for (auto *card : m_channelCards) {
+                if (card != nullptr && card->channelNumber() == channel) {
+                    card->pulseValves(valves);
+                    break;
+                }
             }
         }, Qt::QueuedConnection);
         connect(m_runtime, &SerialWorkerRuntime::channelAlarmUpdated, this, [this](const QList<int> &channels) {
@@ -128,6 +184,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
     if (m_settings != nullptr) {
         m_settings->saveWindowGeometry(saveGeometry());
         m_settings->saveSerialSettings(currentSerialSettings());
+        if (m_parameterPanel != nullptr) {
+            m_settings->saveControlParameters(m_parameterPanel->currentControlParameters());
+        }
         m_settings->saveVisibleValveCount(m_visibleValveCountSpin != nullptr ? m_visibleValveCountSpin->value() : m_savedVisibleValveCount);
     }
 
@@ -236,6 +295,12 @@ void MainWindow::buildUi()
     m_parameterPanel->setFixedWidth(420);
     m_parameterPanel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     connect(m_parameterPanel, &ParameterPanelWidget::commandRequested, this, &MainWindow::handleCommandRequest);
+    connect(m_parameterPanel, &ParameterPanelWidget::timingBatchRequested, this, &MainWindow::handleTimingBatchRequest);
+    connect(m_parameterPanel, &ParameterPanelWidget::controlParametersChanged, this, [this](const ControlParameters &parameters) {
+        if (m_settings != nullptr) {
+            m_settings->saveControlParameters(parameters);
+        }
+    });
     upperLayout->addWidget(m_parameterPanel);
 
     m_cardsScroll = new QScrollArea(upperWidget);
@@ -309,6 +374,10 @@ void MainWindow::applySavedSettings()
     if (m_visibleValveCountSpin != nullptr) {
         m_visibleValveCountSpin->setValue(m_savedVisibleValveCount);
     }
+
+    if (m_parameterPanel != nullptr) {
+        m_parameterPanel->applyControlParameters(m_savedControlParameters);
+    }
 }
 
 void MainWindow::applyVisibleValveCount(const int count)
@@ -374,7 +443,6 @@ void MainWindow::handlePortsReady(const QVector<SerialPortDescriptor> &ports)
         const int index = m_portCombo->findData(selectedPort);
         if (index >= 0) {
             m_portCombo->setCurrentIndex(index);
-            return;
         }
     }
 
@@ -382,6 +450,15 @@ void MainWindow::handlePortsReady(const QVector<SerialPortDescriptor> &ports)
         const int savedIndex = m_portCombo->findData(m_savedSerialSettings.portName);
         if (savedIndex >= 0) {
             m_portCombo->setCurrentIndex(savedIndex);
+        }
+    }
+
+    if (m_autoConnectPending && !m_connected) {
+        const QString portName = currentSerialSettings().portName;
+        if (!portName.isEmpty()) {
+            m_autoConnectPending = false;
+            statusBar()->showMessage(QStringLiteral("正在自动连接串口..."), 3000);
+            emit requestOpenPort(currentSerialSettings());
         }
     }
 }
@@ -401,6 +478,36 @@ void MainWindow::handleCommandRequest(const CommandPacket &packet, const bool pa
         emit requestEnqueueCommand(packet, dialog.password());
     } else {
         statusBar()->showMessage(QStringLiteral("已取消受保护参数下发。"), 3000);
+    }
+}
+
+void MainWindow::handleTimingBatchRequest()
+{
+    if (m_parameterPanel == nullptr) {
+        return;
+    }
+
+    PasswordDialog dialog(
+        QStringLiteral("时间参数受密码保护，请输入固定密码后继续。"),
+        this
+    );
+    if (dialog.exec() != QDialog::Accepted) {
+        statusBar()->showMessage(QStringLiteral("已取消时间参数下发。"), 3000);
+        return;
+    }
+
+    if (!SecurityPolicy::isPasswordValid(dialog.password())) {
+        statusBar()->showMessage(QStringLiteral("密码校验失败。"), 5000);
+        return;
+    }
+
+    enqueueCommands(m_parameterPanel->timingParameterCommands(), dialog.password());
+}
+
+void MainWindow::enqueueCommands(const QVector<CommandPacket> &packets, const QString &password)
+{
+    for (const auto &packet : packets) {
+        emit requestEnqueueCommand(packet, password);
     }
 }
 

@@ -11,6 +11,8 @@
 
 namespace
 {
+constexpr int kMaxLogRows = 1000;
+
 QColor colorForDirection(const QString &direction)
 {
     if (direction == QStringLiteral("TX")) {
@@ -96,6 +98,10 @@ LogPanelWidget::LogPanelWidget(QWidget *parent)
 
 void LogPanelWidget::addLog(const QString &direction, const QString &hex, const QString &description)
 {
+    if (m_table->rowCount() >= kMaxLogRows) {
+        m_table->removeRow(0);
+    }
+
     const int row = m_table->rowCount();
     m_table->insertRow(row);
 

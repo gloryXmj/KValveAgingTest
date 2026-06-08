@@ -29,6 +29,39 @@ void AppSettings::saveSerialSettings(const SerialPortSettings &settings) const
     m_settings.setValue(QStringLiteral("serial/flowControl"), settings.flowControl);
 }
 
+ControlParameters AppSettings::loadControlParameters() const
+{
+    ControlParameters parameters;
+    parameters.valveSwitch = m_settings.value(QStringLiteral("control/valveSwitch"), parameters.valveSwitch).toInt();
+    parameters.triggerMode = m_settings.value(QStringLiteral("control/triggerMode"), parameters.triggerMode).toInt();
+    parameters.blowCount = m_settings.value(QStringLiteral("control/blowCount"), parameters.blowCount).toInt();
+    parameters.blowIntervalMs = m_settings.value(QStringLiteral("control/blowIntervalMs"), parameters.blowIntervalMs).toInt();
+    parameters.blowTimeMs = m_settings.value(QStringLiteral("control/blowTimeMs"), parameters.blowTimeMs).toDouble();
+    parameters.chargeTimeMs = m_settings.value(QStringLiteral("control/chargeTimeMs"), parameters.chargeTimeMs).toDouble();
+    parameters.stopChargeTimeMs = m_settings.value(QStringLiteral("control/stopChargeTimeMs"), parameters.stopChargeTimeMs).toDouble();
+    parameters.rechargeTimeMs = m_settings.value(QStringLiteral("control/rechargeTimeMs"), parameters.rechargeTimeMs).toDouble();
+    parameters.channelCount = m_settings.value(QStringLiteral("control/channelCount"), parameters.channelCount).toInt();
+    parameters.independentChannelEnable = m_settings.value(
+        QStringLiteral("control/independentChannelEnable"),
+        parameters.independentChannelEnable
+    ).toInt();
+    return parameters;
+}
+
+void AppSettings::saveControlParameters(const ControlParameters &parameters) const
+{
+    m_settings.setValue(QStringLiteral("control/valveSwitch"), parameters.valveSwitch);
+    m_settings.setValue(QStringLiteral("control/triggerMode"), parameters.triggerMode);
+    m_settings.setValue(QStringLiteral("control/blowCount"), parameters.blowCount);
+    m_settings.setValue(QStringLiteral("control/blowIntervalMs"), parameters.blowIntervalMs);
+    m_settings.setValue(QStringLiteral("control/blowTimeMs"), parameters.blowTimeMs);
+    m_settings.setValue(QStringLiteral("control/chargeTimeMs"), parameters.chargeTimeMs);
+    m_settings.setValue(QStringLiteral("control/stopChargeTimeMs"), parameters.stopChargeTimeMs);
+    m_settings.setValue(QStringLiteral("control/rechargeTimeMs"), parameters.rechargeTimeMs);
+    m_settings.setValue(QStringLiteral("control/channelCount"), parameters.channelCount);
+    m_settings.setValue(QStringLiteral("control/independentChannelEnable"), parameters.independentChannelEnable);
+}
+
 int AppSettings::loadVisibleValveCount() const
 {
     return m_settings.value(

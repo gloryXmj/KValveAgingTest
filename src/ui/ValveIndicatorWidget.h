@@ -14,7 +14,7 @@ public:
 
     int valveNumber() const;
     bool isPulsing() const;
-    void pulse(int durationMs = 600);
+    void pulse(int durationMs = 10);
 
 protected:
     void paintEvent(QPaintEvent *event) override;

@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.16)
+
+set(KVALVE_DEFAULT_TOOLCHAIN_FILE
+    "${CMAKE_CURRENT_LIST_DIR}/toolchain/toolchain_aarch64_up_3588.cmake")
 
 project(KValveAgingTestTool LANGUAGES CXX)
 

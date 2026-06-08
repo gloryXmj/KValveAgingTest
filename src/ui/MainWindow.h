@@ -1,5 +1,6 @@
 #pragma once
 
+#include "src/core/ControlParameters.h"
 #include "src/core/CommandPacket.h"
 #include "src/serial/SerialPortTypes.h"
 
@@ -41,19 +42,24 @@ private:
     void buildUi();
     void refreshPorts();
     void applySavedSettings();
+    void enqueueCommands(const QVector<CommandPacket> &packets, const QString &password = QString());
     void applyVisibleValveCount(int count);
     void updateConnectionBadge(bool connected);
     void updateChannelAlarmDisplay();
     void handlePortsReady(const QVector<SerialPortDescriptor> &ports);
     void handleCommandRequest(const CommandPacket &packet, bool passwordRequired);
+    void handleTimingBatchRequest();
     SerialPortSettings currentSerialSettings() const;
 
     SerialWorkerRuntime *m_runtime = nullptr;
     AppSettings *m_settings = nullptr;
     SerialPortSettings m_savedSerialSettings;
+    ControlParameters m_savedControlParameters;
     int m_savedVisibleValveCount = 0;
     bool m_connected = false;
     bool m_hasCommunicationFault = true;
+    bool m_autoConnectPending = false;
+    bool m_autoApplyGeneralParametersPending = false;
     QSet<int> m_abnormalChannels;
 
     QComboBox *m_portCombo = nullptr;

@@ -8,7 +8,7 @@ QByteArray ProtocolCodec::encodeWriteFrame(const quint8 command, const quint16 d
 {
     QByteArray frame;
     frame.reserve(4);
-    frame.append(char(CommandMap::kWriteHeader));
+    frame.append(char(CommandMap::writeHeaderForCommand(command)));
     frame.append(char(command));
     frame.append(char((data16 >> 8) & 0xFF));
     frame.append(char(data16 & 0xFF));
@@ -21,13 +21,15 @@ std::optional<DecodedFrame> ProtocolCodec::decodeAckFrame(const QByteArray &fram
         return std::nullopt;
     }
 
-    if (quint8(frame.at(0)) != CommandMap::kAckHeader) {
+    const quint8 header = quint8(frame.at(0));
+    const quint8 command = quint8(frame.at(1));
+    if (!CommandMap::isReplyHeader(header) || !CommandMap::isKnownCommand(command)) {
         return std::nullopt;
     }
 
     DecodedFrame decoded;
-    decoded.header = quint8(frame.at(0));
-    decoded.command = quint8(frame.at(1));
+    decoded.header = header;
+    decoded.command = command;
     decoded.data16 = (quint16(quint8(frame.at(2))) << 8) | quint16(quint8(frame.at(3)));
     return decoded;
 }

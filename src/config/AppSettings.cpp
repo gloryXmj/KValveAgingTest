@@ -2,6 +2,8 @@
 
 #include "src/core/CommandMap.h"
 
+#include <QtGlobal>
+
 AppSettings::AppSettings(const QString &organization, const QString &application)
     : m_settings(organization, application)
 {
@@ -59,6 +61,9 @@ ControlParameters AppSettings::loadControlParameters() const
     parameters.triggerMode = m_settings.value(QStringLiteral("control/triggerMode"), parameters.triggerMode).toInt();
     parameters.blowCount = m_settings.value(QStringLiteral("control/blowCount"), parameters.blowCount).toInt();
     parameters.blowIntervalMs = m_settings.value(QStringLiteral("control/blowIntervalMs"), parameters.blowIntervalMs).toInt();
+    parameters.testFrequencyHz = m_settings.contains(QStringLiteral("control/testFrequencyHz"))
+        ? m_settings.value(QStringLiteral("control/testFrequencyHz"), parameters.testFrequencyHz).toInt()
+        : qBound(1, qRound(1000.0 / qMax(1, parameters.blowIntervalMs)), 1000);
     parameters.blowTimeMs = m_settings.value(QStringLiteral("control/blowTimeMs"), parameters.blowTimeMs).toDouble();
     parameters.chargeTimeMs = m_settings.value(QStringLiteral("control/chargeTimeMs"), parameters.chargeTimeMs).toDouble();
     parameters.stopChargeTimeMs = m_settings.value(QStringLiteral("control/stopChargeTimeMs"), parameters.stopChargeTimeMs).toDouble();
@@ -78,6 +83,7 @@ void AppSettings::saveControlParameters(const ControlParameters &parameters) con
     m_settings.setValue(QStringLiteral("control/triggerMode"), parameters.triggerMode);
     m_settings.setValue(QStringLiteral("control/blowCount"), parameters.blowCount);
     m_settings.setValue(QStringLiteral("control/blowIntervalMs"), parameters.blowIntervalMs);
+    m_settings.setValue(QStringLiteral("control/testFrequencyHz"), parameters.testFrequencyHz);
     m_settings.setValue(QStringLiteral("control/blowTimeMs"), parameters.blowTimeMs);
     m_settings.setValue(QStringLiteral("control/chargeTimeMs"), parameters.chargeTimeMs);
     m_settings.setValue(QStringLiteral("control/stopChargeTimeMs"), parameters.stopChargeTimeMs);

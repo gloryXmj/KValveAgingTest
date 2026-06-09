@@ -183,10 +183,6 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     m_blowInterval->setValue(10);
     m_blowInterval->setSuffix(QStringLiteral(" ms"));
     connect(m_blowInterval, qOverload<int>(&QSpinBox::valueChanged), this, [this](const int value) {
-        if (m_agingFrequency != nullptr) {
-            const QSignalBlocker frequencyBlocker(m_agingFrequency);
-            m_agingFrequency->setValue(agingFrequencyFromIntervalMs(value));
-        }
         emitParameterCommand(CommandMap::kBlowInterval, quint16(value), false);
         emitControlParametersChanged();
     });
@@ -198,14 +194,10 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
 
     m_agingFrequency = new QSpinBox(generalGroup);
     m_agingFrequency->setRange(1, 1000);
-    m_agingFrequency->setValue(agingFrequencyFromIntervalMs(m_blowInterval->value()));
+    m_agingFrequency->setValue(100);
     m_agingFrequency->setSuffix(QStringLiteral(" 次/秒"));
     connect(m_agingFrequency, qOverload<int>(&QSpinBox::valueChanged), this, [this](const int value) {
         const int intervalMs = intervalMsFromAgingFrequency(value);
-        if (m_blowInterval != nullptr) {
-            const QSignalBlocker intervalBlocker(m_blowInterval);
-            m_blowInterval->setValue(intervalMs);
-        }
         emitParameterCommand(CommandMap::kBlowInterval, quint16(intervalMs), false);
         emitControlParametersChanged();
     });
@@ -331,7 +323,8 @@ ControlParameters ParameterPanelWidget::currentControlParameters() const
     parameters.valveSwitch = m_valveSwitch != nullptr && m_valveSwitch->isChecked() ? 1 : 0;
     parameters.triggerMode = m_triggerMode != nullptr ? m_triggerMode->currentData().toInt() : 0;
     parameters.blowCount = m_blowCount != nullptr ? m_blowCount->value() : 1;
-    parameters.blowIntervalMs = m_blowInterval != nullptr ? m_blowInterval->value() : 0;
+    parameters.blowIntervalMs = m_blowInterval != nullptr ? m_blowInterval->value() : 10;
+    parameters.testFrequencyHz = m_agingFrequency != nullptr ? m_agingFrequency->value() : 100;
     parameters.blowTimeMs = m_blowTime != nullptr ? m_blowTime->value() : 2.0;
     parameters.chargeTimeMs = m_chargeTime != nullptr ? m_chargeTime->value() : 1.0;
     parameters.stopChargeTimeMs = m_stopChargeTime != nullptr ? m_stopChargeTime->value() : 1.5;
@@ -373,7 +366,7 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
         m_blowInterval->setValue(parameters.blowIntervalMs);
     }
     if (m_agingFrequency != nullptr) {
-        m_agingFrequency->setValue(agingFrequencyFromIntervalMs(parameters.blowIntervalMs));
+        m_agingFrequency->setValue(parameters.testFrequencyHz);
     }
     updateOperationModeUi(false);
     if (m_triggerMode != nullptr) {
@@ -408,8 +401,8 @@ QVector<CommandPacket> ParameterPanelWidget::generalParameterCommands() const
         makePacket(CommandMap::kChannelCount, quint16(parameters.channelCount)),
         makePacket(CommandMap::kIndependentChannelEnable, quint16(parameters.independentChannelEnable)),
         makePacket(CommandMap::kTriggerMode, quint16(parameters.triggerMode)),
-        makePacket(CommandMap::kBlowCount, quint16(parameters.blowCount)),
-        makePacket(CommandMap::kBlowInterval, quint16(parameters.blowIntervalMs)),
+        makePacket(CommandMap::kBlowCount, quint16(effectiveBlowCountForCurrentMode())),
+        makePacket(CommandMap::kBlowInterval, quint16(effectiveBlowIntervalMsForCurrentMode())),
         makePacket(CommandMap::kValveSwitch, quint16(parameters.valveSwitch)),
     };
 }
@@ -437,11 +430,6 @@ void ParameterPanelWidget::applyOperationModeSelection(const int operationMode)
     }
 
     m_operationModeValue = operationMode == kOperationModeAging ? kOperationModeAging : kOperationModeTest;
-    if (m_operationModeValue == kOperationModeTest && m_blowCount != nullptr) {
-        const QSignalBlocker blocker(m_blowCount);
-        m_blowCount->setValue(1);
-    }
-
     updateOperationModeUi(false);
     emit generalBatchRequested();
     emitControlParametersChanged();
@@ -467,11 +455,6 @@ void ParameterPanelWidget::updateOperationModeUi(const bool syncCommands)
     }
     if (m_agingFrequencyRow != nullptr) {
         m_agingFrequencyRow->setVisible(!agingMode);
-    }
-
-    if (m_blowInterval != nullptr && m_agingFrequency != nullptr) {
-        const QSignalBlocker blocker(m_agingFrequency);
-        m_agingFrequency->setValue(agingFrequencyFromIntervalMs(m_blowInterval->value()));
     }
 }
 
@@ -526,6 +509,22 @@ void ParameterPanelWidget::updateValveSwitchButton()
     }
 
     m_valveSwitch->setText(m_valveSwitch->isChecked() ? QStringLiteral("开启") : QStringLiteral("关闭"));
+}
+
+int ParameterPanelWidget::effectiveBlowCountForCurrentMode() const
+{
+    return m_operationModeValue == kOperationModeAging
+        ? (m_blowCount != nullptr ? m_blowCount->value() : 1)
+        : 1;
+}
+
+int ParameterPanelWidget::effectiveBlowIntervalMsForCurrentMode() const
+{
+    if (m_operationModeValue == kOperationModeAging) {
+        return m_blowInterval != nullptr ? m_blowInterval->value() : 10;
+    }
+
+    return intervalMsFromAgingFrequency(m_agingFrequency != nullptr ? m_agingFrequency->value() : 100);
 }
 
 int ParameterPanelWidget::agingFrequencyFromIntervalMs(const int intervalMs)

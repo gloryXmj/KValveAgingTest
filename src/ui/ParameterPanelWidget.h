@@ -39,6 +39,8 @@ private:
     void updateOperationModeButtons();
     void rebuildTriggerModeOptions(bool syncCommand);
     void updateValveSwitchButton();
+    int effectiveBlowCountForCurrentMode() const;
+    int effectiveBlowIntervalMsForCurrentMode() const;
     static int agingFrequencyFromIntervalMs(int intervalMs);
     static int intervalMsFromAgingFrequency(int frequency);
     static quint16 timingMsToRaw(double milliseconds);

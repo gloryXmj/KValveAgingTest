@@ -10,7 +10,8 @@ struct ControlParameters
     int valveSwitch = 0;
     int triggerMode = 0;
     int blowCount = 1;
-    int blowIntervalMs = 0;
+    int blowIntervalMs = 10;
+    int testFrequencyHz = 100;
     double blowTimeMs = 2.0;
     double chargeTimeMs = 1.0;
     double stopChargeTimeMs = 1.5;

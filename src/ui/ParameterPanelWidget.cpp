@@ -131,16 +131,10 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     m_agingModeButton->setProperty("modeToggle", true);
 
     connect(m_testModeButton, &QPushButton::clicked, this, [this]() {
-        m_operationModeValue = kOperationModeTest;
-        updateOperationModeUi(false);
-        emit generalBatchRequested();
-        emitControlParametersChanged();
+        applyOperationModeSelection(kOperationModeTest);
     });
     connect(m_agingModeButton, &QPushButton::clicked, this, [this]() {
-        m_operationModeValue = kOperationModeAging;
-        updateOperationModeUi(false);
-        emit generalBatchRequested();
-        emitControlParametersChanged();
+        applyOperationModeSelection(kOperationModeAging);
     });
     generalLayout->addWidget(
         makeFieldRow(
@@ -436,6 +430,23 @@ void ParameterPanelWidget::emitParameterCommand(const quint8 command, const quin
     emit commandRequested(CommandPacket{command, data16, purpose}, passwordRequired);
 }
 
+void ParameterPanelWidget::applyOperationModeSelection(const int operationMode)
+{
+    if (m_operationModeValue == operationMode) {
+        return;
+    }
+
+    m_operationModeValue = operationMode == kOperationModeAging ? kOperationModeAging : kOperationModeTest;
+    if (m_operationModeValue == kOperationModeTest && m_blowCount != nullptr) {
+        const QSignalBlocker blocker(m_blowCount);
+        m_blowCount->setValue(1);
+    }
+
+    updateOperationModeUi(false);
+    emit generalBatchRequested();
+    emitControlParametersChanged();
+}
+
 void ParameterPanelWidget::emitControlParametersChanged()
 {
     emit controlParametersChanged(currentControlParameters());
@@ -446,14 +457,16 @@ void ParameterPanelWidget::updateOperationModeUi(const bool syncCommands)
     updateOperationModeButtons();
     rebuildTriggerModeOptions(syncCommands);
 
+    const bool agingMode = m_operationModeValue == kOperationModeAging;
+
     if (m_blowCountRow != nullptr) {
-        m_blowCountRow->setVisible(false);
+        m_blowCountRow->setVisible(agingMode);
     }
     if (m_blowIntervalRow != nullptr) {
-        m_blowIntervalRow->setVisible(false);
+        m_blowIntervalRow->setVisible(agingMode);
     }
     if (m_agingFrequencyRow != nullptr) {
-        m_agingFrequencyRow->setVisible(true);
+        m_agingFrequencyRow->setVisible(!agingMode);
     }
 
     if (m_blowInterval != nullptr && m_agingFrequency != nullptr) {

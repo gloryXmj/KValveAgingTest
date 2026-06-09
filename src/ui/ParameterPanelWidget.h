@@ -32,6 +32,7 @@ signals:
     void controlParametersChanged(const ControlParameters &parameters);
 
 private:
+    void applyOperationModeSelection(int operationMode);
     void emitParameterCommand(quint8 command, quint16 data16, bool passwordRequired, CommandPurpose purpose = CommandPurpose::ParameterWrite);
     void emitControlParametersChanged();
     void updateOperationModeUi(bool syncCommands);

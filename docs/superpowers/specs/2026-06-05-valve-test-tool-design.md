@@ -46,7 +46,7 @@ The following assumptions were confirmed during design review:
   - Sent: `AA 50 00 01`
   - Ack: `A0 50 00 01`
   - Meaning: channel `1`, valve `1` executed successfully
-- The fixed password for protected timing parameters is `Keye@1234`.
+- The fixed password for protected timing parameters is `123`.
 
 If the firmware later introduces checksum bytes, extended responses, or asynchronous event frames, the protocol layer must be extended without changing the UI or controller contracts.
 
@@ -304,7 +304,7 @@ Flow:
 1. operator edits one of the protected timing values
 2. operator clicks apply
 3. `PasswordDialog` appears
-4. `SecurityPolicy` validates the typed password against `Keye@1234`
+4. `SecurityPolicy` validates the typed password against `123`
 5. on success:
    - the command is sent
    - the field enters pending state
@@ -550,6 +550,6 @@ The first release is accepted when:
 - commands are sent in the specified `AA + cmd + data16` format
 - acknowledgements in `A0 + cmd + data16` format are matched correctly
 - the correct valve indicator flashes for `100 ms` after a successful valve ack
-- the four protected timing parameters require the fixed password `Keye@1234`
+- the four protected timing parameters require the fixed password `123`
 - abnormal channel bitmaps are shown in the UI
 - logs display both raw bytes and decoded action meaning

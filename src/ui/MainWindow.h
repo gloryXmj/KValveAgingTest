@@ -49,6 +49,11 @@ private:
     void handlePortsReady(const QVector<SerialPortDescriptor> &ports);
     void handleCommandRequest(const CommandPacket &packet, bool passwordRequired);
     void handleTimingBatchRequest();
+    bool requestProtectedPassword(
+        const QString &prompt,
+        const QString &successMessage,
+        const QString &cancelMessage,
+        QString *password);
     SerialPortSettings currentSerialSettings() const;
 
     SerialWorkerRuntime *m_runtime = nullptr;

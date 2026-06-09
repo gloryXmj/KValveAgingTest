@@ -6,6 +6,7 @@
 
 struct ControlParameters
 {
+    int operationMode = 0;
     int valveSwitch = 0;
     int triggerMode = 0;
     int blowCount = 1;

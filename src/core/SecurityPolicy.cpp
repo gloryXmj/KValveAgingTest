@@ -4,7 +4,7 @@
 
 namespace
 {
-constexpr auto kFixedPassword = "Keye@1234";
+    constexpr auto kFixedPassword = "123";
 }
 
 bool SecurityPolicy::requiresPassword(const quint8 command)

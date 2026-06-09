@@ -17,6 +17,21 @@
 
 namespace
 {
+constexpr int kOperationModeTest = 0;
+constexpr int kOperationModeAging = 1;
+
+constexpr int kTriggerSingleShot = 0;
+constexpr int kTriggerSingleIncrement = 1;
+constexpr int kTriggerSingleCycle = 2;
+constexpr int kTriggerIncrementCycle = 3;
+constexpr int kTriggerTripleSeparate = 4;
+constexpr int kTriggerTripleSimultaneous = 5;
+
+int defaultTriggerModeForOperationMode(const int operationMode)
+{
+    return operationMode == kOperationModeAging ? kTriggerTripleSimultaneous : kTriggerSingleCycle;
+}
+
 QWidget *makeFieldRow(const QString &labelText, QWidget *editor, QWidget *parent)
 {
     auto *row = new QWidget(parent);
@@ -28,6 +43,17 @@ QWidget *makeFieldRow(const QString &labelText, QWidget *editor, QWidget *parent
     label->setProperty("fieldLabel", true);
     layout->addWidget(label);
     layout->addWidget(editor);
+    return row;
+}
+
+QWidget *makeModeSelectorRow(QPushButton *testButton, QPushButton *agingButton, QWidget *parent)
+{
+    auto *row = new QWidget(parent);
+    auto *layout = new QHBoxLayout(row);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(8);
+    layout->addWidget(testButton, 1);
+    layout->addWidget(agingButton, 1);
     return row;
 }
 
@@ -94,6 +120,34 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     auto *generalGroup = new QGroupBox(QStringLiteral("基础参数"), this);
     auto *generalLayout = new QVBoxLayout(generalGroup);
 
+    m_testModeButton = new QPushButton(QStringLiteral("测试"), generalGroup);
+    m_testModeButton->setCheckable(true);
+    m_testModeButton->setAutoExclusive(true);
+    m_testModeButton->setProperty("modeToggle", true);
+
+    m_agingModeButton = new QPushButton(QStringLiteral("老化"), generalGroup);
+    m_agingModeButton->setCheckable(true);
+    m_agingModeButton->setAutoExclusive(true);
+    m_agingModeButton->setProperty("modeToggle", true);
+
+    connect(m_testModeButton, &QPushButton::clicked, this, [this]() {
+        m_operationModeValue = kOperationModeTest;
+        updateOperationModeUi(false);
+        emit generalBatchRequested();
+        emitControlParametersChanged();
+    });
+    connect(m_agingModeButton, &QPushButton::clicked, this, [this]() {
+        m_operationModeValue = kOperationModeAging;
+        updateOperationModeUi(false);
+        emit generalBatchRequested();
+        emitControlParametersChanged();
+    });
+    generalLayout->addWidget(
+        makeFieldRow(
+            QStringLiteral("工作模式"),
+            makeModeSelectorRow(m_testModeButton, m_agingModeButton, generalGroup),
+            generalGroup));
+
     m_valveSwitch = new QPushButton(generalGroup);
     m_valveSwitch->setCheckable(true);
     m_valveSwitch->setProperty("valveToggle", true);
@@ -108,12 +162,6 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     generalLayout->addWidget(makeFieldRow(QStringLiteral("阀开关"), m_valveSwitch, generalGroup));
 
     m_triggerMode = new QComboBox(generalGroup);
-    m_triggerMode->addItem(QStringLiteral("单次触发"), 0);
-    m_triggerMode->addItem(QStringLiteral("单次递增"), 1);
-    m_triggerMode->addItem(QStringLiteral("单次循环"), 2);
-    m_triggerMode->addItem(QStringLiteral("递增循环"), 3);
-    m_triggerMode->addItem(QStringLiteral("三抽一分开"), 4);
-    m_triggerMode->addItem(QStringLiteral("三抽一同时"), 5);
     prepareTouchComboBox(m_triggerMode);
     connect(m_triggerMode, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](const int index) {
         Q_UNUSED(index);
@@ -129,11 +177,11 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
         emitParameterCommand(CommandMap::kBlowCount, quint16(value), false);
         emitControlParametersChanged();
     });
-    generalLayout->addWidget(
-        makeFieldRow(
-            QStringLiteral("吹气次数"),
-            new TouchSpinBoxWidget(m_blowCount, 148, QStringLiteral("输入吹气次数"), generalGroup),
-            generalGroup));
+    m_blowCountRow = makeFieldRow(
+        QStringLiteral("吹气次数"),
+        new TouchSpinBoxWidget(m_blowCount, 148, QStringLiteral("输入吹气次数"), generalGroup),
+        generalGroup);
+    generalLayout->addWidget(m_blowCountRow);
 
     m_blowInterval = new QSpinBox(generalGroup);
     m_blowInterval->setRange(0, 65535);
@@ -141,14 +189,37 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     m_blowInterval->setValue(10);
     m_blowInterval->setSuffix(QStringLiteral(" ms"));
     connect(m_blowInterval, qOverload<int>(&QSpinBox::valueChanged), this, [this](const int value) {
+        if (m_agingFrequency != nullptr) {
+            const QSignalBlocker frequencyBlocker(m_agingFrequency);
+            m_agingFrequency->setValue(agingFrequencyFromIntervalMs(value));
+        }
         emitParameterCommand(CommandMap::kBlowInterval, quint16(value), false);
         emitControlParametersChanged();
     });
-    generalLayout->addWidget(
-        makeFieldRow(
-            QStringLiteral("吹气间隔"),
-            new TouchSpinBoxWidget(m_blowInterval, 148, QStringLiteral("输入吹气间隔"), generalGroup),
-            generalGroup));
+    m_blowIntervalRow = makeFieldRow(
+        QStringLiteral("吹气间隔"),
+        new TouchSpinBoxWidget(m_blowInterval, 148, QStringLiteral("输入吹气间隔"), generalGroup),
+        generalGroup);
+    generalLayout->addWidget(m_blowIntervalRow);
+
+    m_agingFrequency = new QSpinBox(generalGroup);
+    m_agingFrequency->setRange(1, 1000);
+    m_agingFrequency->setValue(agingFrequencyFromIntervalMs(m_blowInterval->value()));
+    m_agingFrequency->setSuffix(QStringLiteral(" 次/秒"));
+    connect(m_agingFrequency, qOverload<int>(&QSpinBox::valueChanged), this, [this](const int value) {
+        const int intervalMs = intervalMsFromAgingFrequency(value);
+        if (m_blowInterval != nullptr) {
+            const QSignalBlocker intervalBlocker(m_blowInterval);
+            m_blowInterval->setValue(intervalMs);
+        }
+        emitParameterCommand(CommandMap::kBlowInterval, quint16(intervalMs), false);
+        emitControlParametersChanged();
+    });
+    m_agingFrequencyRow = makeFieldRow(
+        QStringLiteral("测试频率"),
+        new TouchSpinBoxWidget(m_agingFrequency, 148, QStringLiteral("输入测试频率(次/秒)"), generalGroup),
+        generalGroup);
+    generalLayout->addWidget(m_agingFrequencyRow);
 
     m_channelCount = new QSpinBox(generalGroup);
     m_channelCount->setRange(1, CommandMap::kChannelCountSupported);
@@ -255,12 +326,14 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     connect(m_stopChargeTime, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ParameterPanelWidget::emitControlParametersChanged);
     connect(m_rechargeTime, qOverload<double>(&QDoubleSpinBox::valueChanged), this, &ParameterPanelWidget::emitControlParametersChanged);
 
+    updateOperationModeUi(false);
     layout->addStretch(1);
 }
 
 ControlParameters ParameterPanelWidget::currentControlParameters() const
 {
     ControlParameters parameters;
+    parameters.operationMode = m_operationModeValue;
     parameters.valveSwitch = m_valveSwitch != nullptr && m_valveSwitch->isChecked() ? 1 : 0;
     parameters.triggerMode = m_triggerMode != nullptr ? m_triggerMode->currentData().toInt() : 0;
     parameters.blowCount = m_blowCount != nullptr ? m_blowCount->value() : 1;
@@ -278,10 +351,13 @@ ControlParameters ParameterPanelWidget::currentControlParameters() const
 
 void ParameterPanelWidget::applyControlParameters(const ControlParameters &parameters)
 {
+    const QSignalBlocker testModeBlocker(m_testModeButton);
+    const QSignalBlocker agingModeBlocker(m_agingModeButton);
     const QSignalBlocker valveSwitchBlocker(m_valveSwitch);
     const QSignalBlocker triggerModeBlocker(m_triggerMode);
     const QSignalBlocker blowCountBlocker(m_blowCount);
     const QSignalBlocker blowIntervalBlocker(m_blowInterval);
+    const QSignalBlocker agingFrequencyBlocker(m_agingFrequency);
     const QSignalBlocker blowTimeBlocker(m_blowTime);
     const QSignalBlocker chargeTimeBlocker(m_chargeTime);
     const QSignalBlocker stopChargeTimeBlocker(m_stopChargeTime);
@@ -289,16 +365,29 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
     const QSignalBlocker channelCountBlocker(m_channelCount);
     const QSignalBlocker independentChannelEnableBlocker(m_independentChannelEnable);
 
+    m_operationModeValue = parameters.operationMode == kOperationModeAging ? kOperationModeAging : kOperationModeTest;
+    updateOperationModeButtons();
+
     if (m_valveSwitch != nullptr) {
         m_valveSwitch->setChecked(parameters.valveSwitch != 0);
         updateValveSwitchButton();
     }
-    setComboData(m_triggerMode, parameters.triggerMode);
     if (m_blowCount != nullptr) {
         m_blowCount->setValue(parameters.blowCount);
     }
     if (m_blowInterval != nullptr) {
         m_blowInterval->setValue(parameters.blowIntervalMs);
+    }
+    if (m_agingFrequency != nullptr) {
+        m_agingFrequency->setValue(agingFrequencyFromIntervalMs(parameters.blowIntervalMs));
+    }
+    updateOperationModeUi(false);
+    if (m_triggerMode != nullptr) {
+        int triggerMode = parameters.triggerMode;
+        if (m_triggerMode->findData(triggerMode) < 0) {
+            triggerMode = defaultTriggerModeForOperationMode(m_operationModeValue);
+        }
+        setComboData(m_triggerMode, triggerMode);
     }
     if (m_blowTime != nullptr) {
         m_blowTime->setValue(parameters.blowTimeMs);
@@ -352,6 +441,71 @@ void ParameterPanelWidget::emitControlParametersChanged()
     emit controlParametersChanged(currentControlParameters());
 }
 
+void ParameterPanelWidget::updateOperationModeUi(const bool syncCommands)
+{
+    updateOperationModeButtons();
+    rebuildTriggerModeOptions(syncCommands);
+
+    if (m_blowCountRow != nullptr) {
+        m_blowCountRow->setVisible(false);
+    }
+    if (m_blowIntervalRow != nullptr) {
+        m_blowIntervalRow->setVisible(false);
+    }
+    if (m_agingFrequencyRow != nullptr) {
+        m_agingFrequencyRow->setVisible(true);
+    }
+
+    if (m_blowInterval != nullptr && m_agingFrequency != nullptr) {
+        const QSignalBlocker blocker(m_agingFrequency);
+        m_agingFrequency->setValue(agingFrequencyFromIntervalMs(m_blowInterval->value()));
+    }
+}
+
+void ParameterPanelWidget::updateOperationModeButtons()
+{
+    if (m_testModeButton != nullptr) {
+        m_testModeButton->setChecked(m_operationModeValue == kOperationModeTest);
+    }
+    if (m_agingModeButton != nullptr) {
+        m_agingModeButton->setChecked(m_operationModeValue == kOperationModeAging);
+    }
+}
+
+void ParameterPanelWidget::rebuildTriggerModeOptions(const bool syncCommand)
+{
+    if (m_triggerMode == nullptr) {
+        return;
+    }
+
+    const int previousValue = m_triggerMode->currentData().toInt();
+    const QSignalBlocker blocker(m_triggerMode);
+    m_triggerMode->clear();
+
+    if (m_operationModeValue == kOperationModeAging) {
+        m_triggerMode->addItem(QStringLiteral("三抽一分开"), kTriggerTripleSeparate);
+        m_triggerMode->addItem(QStringLiteral("三抽一同时"), kTriggerTripleSimultaneous);
+    } else {
+        m_triggerMode->addItem(QStringLiteral("单次触发"), kTriggerSingleShot);
+        m_triggerMode->addItem(QStringLiteral("单次递增"), kTriggerSingleIncrement);
+        m_triggerMode->addItem(QStringLiteral("单次循环"), kTriggerSingleCycle);
+        m_triggerMode->addItem(QStringLiteral("循环递增"), kTriggerIncrementCycle);
+    }
+
+    int targetValue = previousValue;
+    if (syncCommand) {
+        targetValue = defaultTriggerModeForOperationMode(m_operationModeValue);
+    } else if (m_triggerMode->findData(targetValue) < 0) {
+        targetValue = defaultTriggerModeForOperationMode(m_operationModeValue);
+    }
+
+    setComboData(m_triggerMode, targetValue);
+    const int currentValue = m_triggerMode->currentData().toInt();
+    if (syncCommand) {
+        emitParameterCommand(CommandMap::kTriggerMode, quint16(currentValue), false);
+    }
+}
+
 void ParameterPanelWidget::updateValveSwitchButton()
 {
     if (m_valveSwitch == nullptr) {
@@ -359,6 +513,16 @@ void ParameterPanelWidget::updateValveSwitchButton()
     }
 
     m_valveSwitch->setText(m_valveSwitch->isChecked() ? QStringLiteral("开启") : QStringLiteral("关闭"));
+}
+
+int ParameterPanelWidget::agingFrequencyFromIntervalMs(const int intervalMs)
+{
+    return qBound(1, qRound(1000.0 / qMax(1, intervalMs)), 1000);
+}
+
+int ParameterPanelWidget::intervalMsFromAgingFrequency(const int frequency)
+{
+    return qBound(1, qRound(1000.0 / qMax(1, frequency)), 65535);
 }
 
 quint16 ParameterPanelWidget::timingMsToRaw(const double milliseconds)

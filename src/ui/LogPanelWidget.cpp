@@ -1,5 +1,6 @@
 #include "src/ui/LogPanelWidget.h"
 
+#include <QAbstractItemView>
 #include <QDateTime>
 #include <QHeaderView>
 #include <QHBoxLayout>
@@ -59,20 +60,30 @@ LogPanelWidget::LogPanelWidget(QWidget *parent)
 {
     setObjectName(QStringLiteral("logCard"));
 
-    auto *layout = new QVBoxLayout(this);
+    auto *layout = new QHBoxLayout(this);
     layout->setContentsMargins(16, 16, 16, 16);
-    layout->setSpacing(10);
+    layout->setSpacing(14);
 
-    auto *headerLayout = new QHBoxLayout();
-    auto *title = new QLabel(QStringLiteral("协议日志"), this);
+    auto *sidePanel = new QWidget(this);
+    sidePanel->setFixedWidth(156);
+    auto *sideLayout = new QVBoxLayout(sidePanel);
+    sideLayout->setContentsMargins(0, 0, 0, 0);
+    sideLayout->setSpacing(10);
+
+    auto *title = new QLabel(QStringLiteral("协议日志"), sidePanel);
     title->setObjectName(QStringLiteral("sectionTitle"));
-    headerLayout->addWidget(title);
-    headerLayout->addStretch();
+    sideLayout->addWidget(title);
 
-    auto *clearButton = new QPushButton(QStringLiteral("清空"), this);
+    auto *caption = new QLabel(QStringLiteral("左侧保留操作区，右侧优先显示日志内容。"), sidePanel);
+    caption->setObjectName(QStringLiteral("sectionCaption"));
+    caption->setWordWrap(true);
+    sideLayout->addWidget(caption);
+
+    auto *clearButton = new QPushButton(QStringLiteral("清空"), sidePanel);
     clearButton->setProperty("secondary", true);
-    headerLayout->addWidget(clearButton);
-    layout->addLayout(headerLayout);
+    sideLayout->addWidget(clearButton);
+    sideLayout->addStretch(1);
+    layout->addWidget(sidePanel);
 
     m_table = new QTableWidget(0, 4, this);
     m_table->setHorizontalHeaderLabels(QStringList{
@@ -89,6 +100,7 @@ LogPanelWidget::LogPanelWidget(QWidget *parent)
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionMode(QAbstractItemView::NoSelection);
     m_table->setAlternatingRowColors(true);
+    m_table->setWordWrap(false);
     layout->addWidget(m_table, 1);
 
     connect(clearButton, &QPushButton::clicked, this, [this]() {

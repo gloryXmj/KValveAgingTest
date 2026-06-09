@@ -491,9 +491,9 @@ private slots:
     }
 
     void fixedPasswordMustMatchExactly() {
-        QVERIFY(SecurityPolicy::validatePassword("Keye@1234"));
-        QVERIFY(!SecurityPolicy::validatePassword("keye@1234"));
-        QVERIFY(!SecurityPolicy::validatePassword("Keye@12345"));
+        QVERIFY(SecurityPolicy::validatePassword("123"));
+        QVERIFY(!SecurityPolicy::validatePassword("123"));
+        QVERIFY(!SecurityPolicy::validatePassword("1235"));
     }
 };
 
@@ -575,7 +575,7 @@ bool SecurityPolicy::requiresPassword(quint8 command) {
 }
 
 bool SecurityPolicy::validatePassword(const QString &password) {
-    return password == QStringLiteral("Keye@1234");
+    return password == QStringLiteral("123");
 }
 ```
 

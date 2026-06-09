@@ -20,6 +20,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListView>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSpinBox>
@@ -324,6 +325,11 @@ void MainWindow::buildUi()
     m_parameterPanel = new ParameterPanelWidget(parameterScroll);
     m_parameterPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     connect(m_parameterPanel, &ParameterPanelWidget::commandRequested, this, &MainWindow::handleCommandRequest);
+    connect(m_parameterPanel, &ParameterPanelWidget::generalBatchRequested, this, [this]() {
+        if (m_parameterPanel != nullptr) {
+            enqueueCommands(m_parameterPanel->generalParameterCommands());
+        }
+    });
     connect(m_parameterPanel, &ParameterPanelWidget::timingBatchRequested, this, &MainWindow::handleTimingBatchRequest);
     connect(m_parameterPanel, &ParameterPanelWidget::controlParametersChanged, this, [this](const ControlParameters &parameters) {
         if (m_settings != nullptr) {
@@ -506,15 +512,16 @@ void MainWindow::handleCommandRequest(const CommandPacket &packet, const bool pa
         return;
     }
 
-    PasswordDialog dialog(
-        QStringLiteral("该时间参数受密码保护，请输入固定密码后继续。"),
-        this
-    );
-    if (dialog.exec() == QDialog::Accepted) {
-        emit requestEnqueueCommand(packet, dialog.password());
-    } else {
-        statusBar()->showMessage(QStringLiteral("已取消受保护参数下发。"), 3000);
+    QString password;
+    if (!requestProtectedPassword(
+            QStringLiteral("该时间参数受密码保护，请输入固定密码后继续。"),
+            QStringLiteral("密码校验通过，已开始下发受保护参数。"),
+            QStringLiteral("已取消受保护参数下发。"),
+            &password)) {
+        return;
     }
+
+    emit requestEnqueueCommand(packet, password);
 }
 
 void MainWindow::handleTimingBatchRequest()
@@ -523,21 +530,43 @@ void MainWindow::handleTimingBatchRequest()
         return;
     }
 
-    PasswordDialog dialog(
-        QStringLiteral("时间参数受密码保护，请输入固定密码后继续。"),
-        this
-    );
+    QString password;
+    if (!requestProtectedPassword(
+            QStringLiteral("时间参数受密码保护，请输入固定密码后继续。"),
+            QStringLiteral("密码校验通过，已开始下发时间参数。"),
+            QStringLiteral("已取消时间参数下发。"),
+            &password)) {
+        return;
+    }
+
+    enqueueCommands(m_parameterPanel->timingParameterCommands(), password);
+}
+
+bool MainWindow::requestProtectedPassword(
+    const QString &prompt,
+    const QString &successMessage,
+    const QString &cancelMessage,
+    QString *password)
+{
+    PasswordDialog dialog(prompt, this);
     if (dialog.exec() != QDialog::Accepted) {
-        statusBar()->showMessage(QStringLiteral("已取消时间参数下发。"), 3000);
-        return;
+        statusBar()->showMessage(cancelMessage, 3000);
+        return false;
     }
 
-    if (!SecurityPolicy::isPasswordValid(dialog.password())) {
-        statusBar()->showMessage(QStringLiteral("密码校验失败。"), 5000);
-        return;
+    const QString inputPassword = dialog.password();
+    if (!SecurityPolicy::isPasswordValid(inputPassword)) {
+        QMessageBox::warning(this, QStringLiteral("密码错误"), QStringLiteral("密码校验失败，参数未下发。"));
+        statusBar()->showMessage(QStringLiteral("密码校验失败，参数未下发。"), 5000);
+        return false;
     }
 
-    enqueueCommands(m_parameterPanel->timingParameterCommands(), dialog.password());
+    if (password != nullptr) {
+        *password = inputPassword;
+    }
+    QMessageBox::information(this, QStringLiteral("密码通过"), successMessage);
+    statusBar()->showMessage(successMessage, 5000);
+    return true;
 }
 
 void MainWindow::enqueueCommands(const QVector<CommandPacket> &packets, const QString &password)

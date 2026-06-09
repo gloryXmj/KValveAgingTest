@@ -54,6 +54,7 @@ void AppSettings::saveLastConnectedSerialSettings(const SerialPortSettings &sett
 ControlParameters AppSettings::loadControlParameters() const
 {
     ControlParameters parameters;
+    parameters.operationMode = m_settings.value(QStringLiteral("control/operationMode"), parameters.operationMode).toInt();
     parameters.valveSwitch = m_settings.value(QStringLiteral("control/valveSwitch"), parameters.valveSwitch).toInt();
     parameters.triggerMode = m_settings.value(QStringLiteral("control/triggerMode"), parameters.triggerMode).toInt();
     parameters.blowCount = m_settings.value(QStringLiteral("control/blowCount"), parameters.blowCount).toInt();
@@ -72,6 +73,7 @@ ControlParameters AppSettings::loadControlParameters() const
 
 void AppSettings::saveControlParameters(const ControlParameters &parameters) const
 {
+    m_settings.setValue(QStringLiteral("control/operationMode"), parameters.operationMode);
     m_settings.setValue(QStringLiteral("control/valveSwitch"), parameters.valveSwitch);
     m_settings.setValue(QStringLiteral("control/triggerMode"), parameters.triggerMode);
     m_settings.setValue(QStringLiteral("control/blowCount"), parameters.blowCount);

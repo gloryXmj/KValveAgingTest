@@ -316,13 +316,13 @@ void MainWindow::buildUi()
     upperLayout->setContentsMargins(0, 0, 0, 0);
     upperLayout->setSpacing(16);
 
-    auto *parameterScroll = new QScrollArea(upperWidget);
-    parameterScroll->setWidgetResizable(true);
-    parameterScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    parameterScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    parameterScroll->setFixedWidth(448);
+    m_parameterScroll = new QScrollArea(upperWidget);
+    m_parameterScroll->setWidgetResizable(true);
+    m_parameterScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_parameterScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    m_parameterScroll->setFixedWidth(448);
 
-    m_parameterPanel = new ParameterPanelWidget(parameterScroll);
+    m_parameterPanel = new ParameterPanelWidget(m_parameterScroll);
     m_parameterPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     connect(m_parameterPanel, &ParameterPanelWidget::commandRequested, this, &MainWindow::handleCommandRequest);
     connect(m_parameterPanel, &ParameterPanelWidget::generalBatchRequested, this, [this]() {
@@ -335,9 +335,10 @@ void MainWindow::buildUi()
         if (m_settings != nullptr) {
             m_settings->saveControlParameters(parameters);
         }
+        updateChannelCardLayout(parameters.channelCount);
     });
-    parameterScroll->setWidget(m_parameterPanel);
-    upperLayout->addWidget(parameterScroll);
+    m_parameterScroll->setWidget(m_parameterPanel);
+    upperLayout->addWidget(m_parameterScroll);
 
     m_cardsScroll = new QScrollArea(upperWidget);
     m_cardsScroll->setWidgetResizable(true);
@@ -345,13 +346,13 @@ void MainWindow::buildUi()
     m_cardsScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     m_cardsPage = new QWidget(m_cardsScroll);
     m_cardsPage->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
-    auto *cardsLayout = new QGridLayout(m_cardsPage);
-    cardsLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
-    cardsLayout->setContentsMargins(0, 0, 0, 0);
-    cardsLayout->setHorizontalSpacing(20);
-    cardsLayout->setVerticalSpacing(20);
-    cardsLayout->setColumnStretch(0, 1);
-    cardsLayout->setColumnStretch(1, 1);
+    m_cardsLayout = new QGridLayout(m_cardsPage);
+    m_cardsLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+    m_cardsLayout->setContentsMargins(0, 0, 0, 0);
+    m_cardsLayout->setHorizontalSpacing(20);
+    m_cardsLayout->setVerticalSpacing(20);
+    m_cardsLayout->setColumnStretch(0, 1);
+    m_cardsLayout->setColumnStretch(1, 1);
 
     for (int channel = 1; channel <= 8; ++channel) {
         auto *card = new ChannelCardWidget(channel, m_cardsPage);
@@ -367,7 +368,7 @@ void MainWindow::buildUi()
         });
 
         const int zeroBased = channel - 1;
-        cardsLayout->addWidget(card, zeroBased / 2, zeroBased % 2);
+        m_cardsLayout->addWidget(card, zeroBased / 2, zeroBased % 2);
         m_channelCards.append(card);
     }
 
@@ -414,6 +415,8 @@ void MainWindow::applySavedSettings()
     if (m_parameterPanel != nullptr) {
         m_parameterPanel->applyControlParameters(m_savedControlParameters);
     }
+
+    updateChannelCardLayout(m_savedControlParameters.channelCount);
 }
 
 void MainWindow::applyVisibleValveCount(const int count)
@@ -440,6 +443,54 @@ void MainWindow::applyVisibleValveCount(const int count)
 
     if (m_settings != nullptr) {
         m_settings->saveVisibleValveCount(m_savedVisibleValveCount);
+    }
+}
+
+void MainWindow::updateChannelCardLayout(const int channelCount)
+{
+    if (m_cardsLayout == nullptr || m_cardsPage == nullptr) {
+        return;
+    }
+
+    const int activeChannelCount = qBound(1, channelCount, CommandMap::kChannelCountSupported);
+    const bool singleChannelMode = activeChannelCount == 1;
+
+    for (auto *card : m_channelCards) {
+        if (card != nullptr) {
+            m_cardsLayout->removeWidget(card);
+        }
+    }
+
+    m_cardsLayout->setHorizontalSpacing(singleChannelMode ? 0 : 20);
+    m_cardsLayout->setVerticalSpacing(singleChannelMode ? 0 : 20);
+    m_cardsLayout->setColumnStretch(0, 1);
+    m_cardsLayout->setColumnStretch(1, singleChannelMode ? 0 : 1);
+
+    for (int index = 0; index < m_channelCards.size(); ++index) {
+        auto *card = m_channelCards.at(index);
+        if (card == nullptr) {
+            continue;
+        }
+
+        const bool visible = index < activeChannelCount;
+        card->setVisible(visible);
+        card->setLargeTouchMode(singleChannelMode && index == 0);
+        if (!visible) {
+            continue;
+        }
+
+        if (singleChannelMode) {
+            m_cardsLayout->addWidget(card, 0, 0, 1, 2);
+        } else {
+            m_cardsLayout->addWidget(card, index / 2, index % 2);
+        }
+    }
+
+    m_cardsLayout->activate();
+    m_cardsPage->adjustSize();
+    m_cardsPage->updateGeometry();
+    if (m_cardsScroll != nullptr) {
+        m_cardsScroll->viewport()->update();
     }
 }
 

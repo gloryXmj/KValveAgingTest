@@ -13,6 +13,7 @@ class ChannelCardWidget;
 class LogPanelWidget;
 class ParameterPanelWidget;
 class QComboBox;
+class QGridLayout;
 class QLabel;
 class QPushButton;
 class QScrollArea;
@@ -44,6 +45,7 @@ private:
     void applySavedSettings();
     void enqueueCommands(const QVector<CommandPacket> &packets, const QString &password = QString());
     void applyVisibleValveCount(int count);
+    void updateChannelCardLayout(int channelCount);
     void updateConnectionBadge(bool connected);
     void updateChannelAlarmDisplay();
     void handlePortsReady(const QVector<SerialPortDescriptor> &ports);
@@ -76,7 +78,9 @@ private:
     QLabel *m_firmwareValue = nullptr;
     ParameterPanelWidget *m_parameterPanel = nullptr;
     LogPanelWidget *m_logPanel = nullptr;
+    QScrollArea *m_parameterScroll = nullptr;
     QScrollArea *m_cardsScroll = nullptr;
     QWidget *m_cardsPage = nullptr;
+    QGridLayout *m_cardsLayout = nullptr;
     QVector<ChannelCardWidget *> m_channelCards;
 };

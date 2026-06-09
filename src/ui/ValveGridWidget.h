@@ -19,6 +19,7 @@ public:
     int visibleValveCount() const;
     bool isValvePulsing(int valveNumber) const;
     void setVisibleValveCount(int count);
+    void setLargeTouchMode(bool enabled);
     void pulseValves(const QList<int> &valveNumbers);
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
@@ -37,6 +38,7 @@ private:
     int m_channel = 0;
     int m_visibleValveCount = 0;
     int m_columnCount = 0;
+    bool m_largeTouchMode = false;
     QGridLayout *m_layout = nullptr;
     QHash<int, ValveIndicatorWidget *> m_indicators;
 };

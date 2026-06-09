@@ -65,6 +65,7 @@ NumericInputDialog::NumericInputDialog(const QString &title, const bool allowDec
     m_valueEdit->setObjectName(QStringLiteral("numericEdit"));
     m_valueEdit->setReadOnly(true);
     m_valueEdit->setAlignment(Qt::AlignCenter);
+    m_valueEdit->setPlaceholderText(QStringLiteral("请输入新值"));
     cardLayout->addWidget(m_valueEdit);
 
     auto *keyboard = new QWidget(card);

@@ -7,6 +7,7 @@
 #include <QEvent>
 #include <QHBoxLayout>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QSpinBox>
 
@@ -92,30 +93,45 @@ void TouchSpinBoxWidget::openNumericInputDialog()
     }
 
     m_dialogOpen = true;
+    const QString previousValueText = currentValueText();
     const bool allowDecimal = qobject_cast<QDoubleSpinBox *>(m_spinBox) != nullptr;
+
     NumericInputDialog dialog(
         m_dialogTitle.isEmpty() ? QStringLiteral("输入数值") : m_dialogTitle,
         allowDecimal,
-        this
-    );
-    dialog.setValueText(currentValueText());
+        this);
+    dialog.setValueText(QString());
 
     if (dialog.exec() == QDialog::Accepted) {
         const QString valueText = dialog.valueText().trimmed();
-        if (!valueText.isEmpty()) {
-            if (auto *intSpinBox = qobject_cast<QSpinBox *>(m_spinBox); intSpinBox != nullptr) {
-                bool ok = false;
-                const int value = valueText.toInt(&ok);
-                if (ok) {
-                    intSpinBox->setValue(value);
-                }
-            } else if (auto *doubleSpinBox = qobject_cast<QDoubleSpinBox *>(m_spinBox); doubleSpinBox != nullptr) {
-                bool ok = false;
-                const double value = valueText.toDouble(&ok);
-                if (ok) {
-                    doubleSpinBox->setValue(value);
-                }
+        if (valueText.isEmpty()) {
+            QMessageBox::information(this, QStringLiteral("未输入数值"), QStringLiteral("未输入新数值，已恢复之前的数据。"));
+            m_dialogOpen = false;
+            return;
+        }
+
+        bool applied = false;
+        if (auto *intSpinBox = qobject_cast<QSpinBox *>(m_spinBox); intSpinBox != nullptr) {
+            bool ok = false;
+            const int value = valueText.toInt(&ok);
+            if (ok) {
+                intSpinBox->setValue(value);
+                applied = true;
             }
+        } else if (auto *doubleSpinBox = qobject_cast<QDoubleSpinBox *>(m_spinBox); doubleSpinBox != nullptr) {
+            bool ok = false;
+            const double value = valueText.toDouble(&ok);
+            if (ok) {
+                doubleSpinBox->setValue(value);
+                applied = true;
+            }
+        }
+
+        if (!applied) {
+            QMessageBox::warning(
+                this,
+                QStringLiteral("输入无效"),
+                QStringLiteral("输入格式无效，已恢复之前的数据：%1").arg(previousValueText));
         }
     }
 

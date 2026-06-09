@@ -10,7 +10,8 @@ namespace
 {
 constexpr int kMaxColumns = 16;
 constexpr int kHorizontalSpacing = 6;
-constexpr int kVerticalSpacing = 8;
+constexpr int kVerticalSpacing = 18;
+constexpr int kVerticalSpacingLargeTouch = 38;
 constexpr int kDefaultLayoutWidth = 560;
 }
 
@@ -63,6 +64,19 @@ void ValveGridWidget::setVisibleValveCount(const int count)
     rebuildGrid();
 }
 
+void ValveGridWidget::setLargeTouchMode(const bool enabled)
+{
+    if (m_largeTouchMode == enabled) {
+        return;
+    }
+
+    m_largeTouchMode = enabled;
+    for (auto it = m_indicators.begin(); it != m_indicators.end(); ++it) {
+        it.value()->setLargeTouchMode(enabled);
+    }
+    rebuildGrid();
+}
+
 void ValveGridWidget::pulseValves(const QList<int> &valveNumbers)
 {
     for (const int valveNumber : valveNumbers) {
@@ -103,6 +117,9 @@ void ValveGridWidget::updateIndicatorVisibility()
 void ValveGridWidget::rebuildGrid()
 {
     updateIndicatorVisibility();
+    if (m_layout != nullptr) {
+        m_layout->setVerticalSpacing(m_largeTouchMode ? kVerticalSpacingLargeTouch : kVerticalSpacing);
+    }
 
     const int availableWidth = width() > 0 ? width() : kDefaultLayoutWidth;
     const int columns = calculateColumnCount(availableWidth);
@@ -126,7 +143,7 @@ void ValveGridWidget::rebuildGrid()
         m_layout->addWidget(indicator, row, column, Qt::AlignTop | Qt::AlignHCenter);
     }
 
-    const int indicatorHeight = ValveIndicatorWidget::preferredSize().height();
+    const int indicatorHeight = ValveIndicatorWidget::preferredSize(m_largeTouchMode).height();
     const int rowCount = qMax(1, (m_visibleValveCount + columns - 1) / columns);
     const QMargins margins = m_layout->contentsMargins();
     const int contentHeight = margins.top()
@@ -144,7 +161,7 @@ void ValveGridWidget::rebuildGrid()
 
 int ValveGridWidget::calculateColumnCount(const int availableWidth) const
 {
-    const int indicatorWidth = ValveIndicatorWidget::preferredSize().width();
+    const int indicatorWidth = ValveIndicatorWidget::preferredSize(m_largeTouchMode).width();
     const int spacing = m_layout != nullptr ? m_layout->horizontalSpacing() : kHorizontalSpacing;
     const int effectiveWidth = qMax(indicatorWidth, availableWidth);
     const int calculated = qMax(1, (effectiveWidth + spacing) / (indicatorWidth + spacing));

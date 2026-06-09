@@ -21,9 +21,9 @@ ValveIndicatorWidget::ValveIndicatorWidget(const int channel, const int valveNum
     });
 }
 
-QSize ValveIndicatorWidget::preferredSize()
+QSize ValveIndicatorWidget::preferredSize(const bool largeTouchMode)
 {
-    return QSize(30, 38);
+    return largeTouchMode ? QSize(64, 82) : QSize(30, 38);
 }
 
 int ValveIndicatorWidget::valveNumber() const
@@ -42,13 +42,25 @@ void ValveIndicatorWidget::pulse(const int durationMs)
     m_pulseTimer->start(durationMs);
 }
 
+void ValveIndicatorWidget::setLargeTouchMode(const bool enabled)
+{
+    if (m_largeTouchMode == enabled) {
+        return;
+    }
+
+    m_largeTouchMode = enabled;
+    setMinimumSize(sizeHint());
+    updateGeometry();
+    update();
+}
+
 void ValveIndicatorWidget::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     const QRectF contentRect = rect().adjusted(2.0, 2.0, -2.0, -2.0);
-    const qreal textHeight = 12.0;
+    const qreal textHeight = m_largeTouchMode ? 20.0 : 12.0;
     const qreal circleDiameter = qMin(contentRect.width(), contentRect.height() - textHeight - 2.0);
     const QRectF circleRect(
         contentRect.left() + (contentRect.width() - circleDiameter) / 2.0,
@@ -76,7 +88,7 @@ void ValveIndicatorWidget::paintEvent(QPaintEvent *)
     painter.drawEllipse(circleRect);
 
     QFont font = painter.font();
-    font.setPointSizeF(6.4);
+    font.setPointSizeF(m_largeTouchMode ? 10.0 : 6.4);
     font.setBold(false);
     painter.setFont(font);
     painter.setPen(textColor);
@@ -107,7 +119,7 @@ void ValveIndicatorWidget::leaveEvent(QEvent *event)
 
 QSize ValveIndicatorWidget::sizeHint() const
 {
-    return preferredSize();
+    return preferredSize(m_largeTouchMode);
 }
 
 void ValveIndicatorWidget::setPulsing(const bool pulsing)

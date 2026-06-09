@@ -2,6 +2,7 @@
 
 #include "src/ui/ValveGridWidget.h"
 
+#include <QFont>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QSizePolicy>
@@ -19,46 +20,56 @@ ChannelCardWidget::ChannelCardWidget(const int channel, QWidget *parent)
     setMinimumWidth(0);
     setMinimumHeight(420);
 
-    auto *layout = new QVBoxLayout(this);
-    layout->setSizeConstraint(QLayout::SetMinAndMaxSize);
-    layout->setContentsMargins(18, 18, 18, 18);
-    layout->setSpacing(12);
+    m_rootLayout = new QVBoxLayout(this);
+    m_rootLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+    m_rootLayout->setContentsMargins(18, 18, 18, 18);
+    m_rootLayout->setSpacing(12);
 
     auto *headerLayout = new QHBoxLayout();
-    auto *titleLabel = new QLabel(QStringLiteral("通道 %1").arg(m_channel), this);
-    titleLabel->setObjectName(QStringLiteral("sectionTitle"));
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setSpacing(8);
+
+    m_titleLabel = new QLabel(QStringLiteral("通道 %1").arg(m_channel), this);
+    m_titleLabel->setObjectName(QStringLiteral("sectionTitle"));
 
     m_badge = new QLabel(QStringLiteral("正常"), this);
     m_badge->setObjectName(QStringLiteral("channelBadge"));
     m_badge->setProperty("alarm", false);
 
-    auto *testedLabel = new QLabel(QStringLiteral("已测阀数"), this);
-    testedLabel->setObjectName(QStringLiteral("sectionCaption"));
+    m_testedLabel = new QLabel(QStringLiteral("已测阀数"), this);
+    m_testedLabel->setObjectName(QStringLiteral("sectionCaption"));
+
     m_testedValue = new QLabel(QStringLiteral("0"), this);
     m_testedValue->setObjectName(QStringLiteral("sectionTitle"));
 
-    headerLayout->addWidget(titleLabel);
+    headerLayout->addWidget(m_titleLabel);
     headerLayout->addWidget(m_badge);
     headerLayout->addStretch();
-    headerLayout->addWidget(testedLabel);
+    headerLayout->addWidget(m_testedLabel);
     headerLayout->addWidget(m_testedValue);
-    layout->addLayout(headerLayout);
+    m_rootLayout->addLayout(headerLayout);
 
     auto *lastLayout = new QHBoxLayout();
-    auto *lastLabel = new QLabel(QStringLiteral("最近回包"), this);
-    lastLabel->setObjectName(QStringLiteral("sectionCaption"));
-    m_lastValue = new QLabel(QStringLiteral("--"), this);
-    lastLayout->addWidget(lastLabel);
-    lastLayout->addWidget(m_lastValue, 1);
-    layout->addLayout(lastLayout);
+    lastLayout->setContentsMargins(0, 0, 0, 0);
+    lastLayout->setSpacing(8);
 
-    auto *gridCaption = new QLabel(QStringLiteral("阀位指示"), this);
-    gridCaption->setObjectName(QStringLiteral("sectionCaption"));
-    layout->addWidget(gridCaption);
+    m_lastLabel = new QLabel(QStringLiteral("最近回包"), this);
+    m_lastLabel->setObjectName(QStringLiteral("sectionCaption"));
+
+    m_lastValue = new QLabel(QStringLiteral("--"), this);
+    m_lastValue->setObjectName(QStringLiteral("sectionCaption"));
+
+    lastLayout->addWidget(m_lastLabel);
+    lastLayout->addWidget(m_lastValue, 1);
+    m_rootLayout->addLayout(lastLayout);
+
+    m_gridCaption = new QLabel(QStringLiteral("阀位指示"), this);
+    m_gridCaption->setObjectName(QStringLiteral("sectionCaption"));
+    m_rootLayout->addWidget(m_gridCaption);
 
     m_grid = new ValveGridWidget(m_channel, this);
     connect(m_grid, &ValveGridWidget::valveInvoked, this, &ChannelCardWidget::valveInvoked);
-    layout->addWidget(m_grid);
+    m_rootLayout->addWidget(m_grid);
 }
 
 int ChannelCardWidget::channelNumber() const
@@ -121,11 +132,55 @@ void ChannelCardWidget::setAbnormal(const bool abnormal)
     refreshVisualState();
 }
 
+void ChannelCardWidget::setLargeTouchMode(const bool enabled)
+{
+    if (m_largeTouchMode == enabled) {
+        return;
+    }
+
+    m_largeTouchMode = enabled;
+    setMinimumHeight(enabled ? 500 : 420);
+
+    if (m_rootLayout != nullptr) {
+        m_rootLayout->setContentsMargins(enabled ? 10 : 18, enabled ? 10 : 18, enabled ? 10 : 18, enabled ? 10 : 18);
+        m_rootLayout->setSpacing(enabled ? 6 : 12);
+    }
+
+    if (m_testedLabel != nullptr) {
+        m_testedLabel->setText(enabled ? QStringLiteral("已测") : QStringLiteral("已测阀数"));
+        m_testedLabel->setStyleSheet(enabled ? QStringLiteral("font-size: 11px;") : QString());
+    }
+    if (m_lastLabel != nullptr) {
+        m_lastLabel->setText(enabled ? QStringLiteral("回包") : QStringLiteral("最近回包"));
+        m_lastLabel->setStyleSheet(enabled ? QStringLiteral("font-size: 11px;") : QString());
+    }
+    if (m_lastValue != nullptr) {
+        m_lastValue->setStyleSheet(enabled ? QStringLiteral("font-size: 11px; color: #44566C;") : QString());
+    }
+    if (m_testedValue != nullptr) {
+        QFont font = m_testedValue->font();
+        font.setPointSizeF(enabled ? 13.0 : 15.0);
+        font.setBold(true);
+        m_testedValue->setFont(font);
+    }
+    if (m_gridCaption != nullptr) {
+        m_gridCaption->setVisible(!enabled);
+    }
+    if (m_grid != nullptr) {
+        m_grid->setLargeTouchMode(enabled);
+    }
+    if (layout() != nullptr) {
+        layout()->activate();
+    }
+    adjustSize();
+    updateGeometry();
+}
+
 void ChannelCardWidget::refreshVisualState()
 {
     setProperty("alarm", m_abnormal);
     m_badge->setProperty("alarm", m_abnormal);
-    m_badge->setText(m_abnormal ? QStringLiteral("告警") : QStringLiteral("正常"));
+    m_badge->setText(m_abnormal ? QStringLiteral("报警") : QStringLiteral("正常"));
 
     style()->unpolish(this);
     style()->polish(this);

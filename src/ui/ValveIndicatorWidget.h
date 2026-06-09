@@ -10,11 +10,12 @@ class ValveIndicatorWidget : public QWidget
 
 public:
     explicit ValveIndicatorWidget(int channel, int valveNumber, QWidget *parent = nullptr);
-    static QSize preferredSize();
+    static QSize preferredSize(bool largeTouchMode = false);
 
     int valveNumber() const;
     bool isPulsing() const;
     void pulse(int durationMs = 50);
+    void setLargeTouchMode(bool enabled);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -33,5 +34,6 @@ private:
     int m_valveNumber = 0;
     bool m_pulsing = false;
     bool m_hovered = false;
+    bool m_largeTouchMode = false;
     QTimer *m_pulseTimer = nullptr;
 };

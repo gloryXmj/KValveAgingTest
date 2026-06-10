@@ -178,19 +178,29 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     generalLayout->addWidget(m_blowCountRow);
 
     m_blowInterval = new QSpinBox(generalGroup);
-    m_blowInterval->setRange(0, 65535);
+    m_blowInterval->setRange(1, 65535);
     m_blowInterval->setSingleStep(10);
     m_blowInterval->setValue(10);
     m_blowInterval->setSuffix(QStringLiteral(" ms"));
-    connect(m_blowInterval, qOverload<int>(&QSpinBox::valueChanged), this, [this](const int value) {
-        emitParameterCommand(CommandMap::kBlowInterval, quint16(value), false);
-        emitControlParametersChanged();
-    });
     m_blowIntervalRow = makeFieldRow(
         QStringLiteral("吹气间隔"),
         new TouchSpinBoxWidget(m_blowInterval, 148, QStringLiteral("输入吹气间隔"), generalGroup),
         generalGroup);
     generalLayout->addWidget(m_blowIntervalRow);
+
+    m_testFrequency = new QSpinBox(generalGroup);
+    m_testFrequency->setRange(1, 1000);
+    m_testFrequency->setValue(100);
+    m_testFrequency->setSuffix(QStringLiteral(" 次/秒"));
+    connect(m_testFrequency, qOverload<int>(&QSpinBox::valueChanged), this, [this](const int value) {
+        emitParameterCommand(CommandMap::kBlowInterval, quint16(intervalMsFromAgingFrequency(value)), false);
+        emitControlParametersChanged();
+    });
+    m_testFrequencyRow = makeFieldRow(
+        QStringLiteral("测试频率"),
+        new TouchSpinBoxWidget(m_testFrequency, 148, QStringLiteral("输入测试频率(次/秒)"), generalGroup),
+        generalGroup);
+    generalLayout->addWidget(m_testFrequencyRow);
 
     m_agingFrequency = new QSpinBox(generalGroup);
     m_agingFrequency->setRange(1, 1000);
@@ -198,12 +208,16 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
     m_agingFrequency->setSuffix(QStringLiteral(" 次/秒"));
     connect(m_agingFrequency, qOverload<int>(&QSpinBox::valueChanged), this, [this](const int value) {
         const int intervalMs = intervalMsFromAgingFrequency(value);
+        if (m_blowInterval != nullptr) {
+            const QSignalBlocker blocker(m_blowInterval);
+            m_blowInterval->setValue(intervalMs);
+        }
         emitParameterCommand(CommandMap::kBlowInterval, quint16(intervalMs), false);
         emitControlParametersChanged();
     });
     m_agingFrequencyRow = makeFieldRow(
-        QStringLiteral("测试频率"),
-        new TouchSpinBoxWidget(m_agingFrequency, 148, QStringLiteral("输入测试频率(次/秒)"), generalGroup),
+        QStringLiteral("老化频率"),
+        new TouchSpinBoxWidget(m_agingFrequency, 148, QStringLiteral("输入老化频率(次/秒)"), generalGroup),
         generalGroup);
     generalLayout->addWidget(m_agingFrequencyRow);
 
@@ -323,8 +337,9 @@ ControlParameters ParameterPanelWidget::currentControlParameters() const
     parameters.valveSwitch = m_valveSwitch != nullptr && m_valveSwitch->isChecked() ? 1 : 0;
     parameters.triggerMode = m_triggerMode != nullptr ? m_triggerMode->currentData().toInt() : 0;
     parameters.blowCount = m_blowCount != nullptr ? m_blowCount->value() : 1;
-    parameters.blowIntervalMs = m_blowInterval != nullptr ? m_blowInterval->value() : 10;
-    parameters.testFrequencyHz = m_agingFrequency != nullptr ? m_agingFrequency->value() : 100;
+    parameters.blowIntervalMs = intervalMsFromAgingFrequency(m_agingFrequency != nullptr ? m_agingFrequency->value() : 100);
+    parameters.testFrequencyHz = m_testFrequency != nullptr ? m_testFrequency->value() : 100;
+    parameters.agingFrequencyHz = m_agingFrequency != nullptr ? m_agingFrequency->value() : 100;
     parameters.blowTimeMs = m_blowTime != nullptr ? m_blowTime->value() : 2.0;
     parameters.chargeTimeMs = m_chargeTime != nullptr ? m_chargeTime->value() : 1.0;
     parameters.stopChargeTimeMs = m_stopChargeTime != nullptr ? m_stopChargeTime->value() : 1.5;
@@ -344,6 +359,7 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
     const QSignalBlocker triggerModeBlocker(m_triggerMode);
     const QSignalBlocker blowCountBlocker(m_blowCount);
     const QSignalBlocker blowIntervalBlocker(m_blowInterval);
+    const QSignalBlocker testFrequencyBlocker(m_testFrequency);
     const QSignalBlocker agingFrequencyBlocker(m_agingFrequency);
     const QSignalBlocker blowTimeBlocker(m_blowTime);
     const QSignalBlocker chargeTimeBlocker(m_chargeTime);
@@ -365,8 +381,11 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
     if (m_blowInterval != nullptr) {
         m_blowInterval->setValue(parameters.blowIntervalMs);
     }
+    if (m_testFrequency != nullptr) {
+        m_testFrequency->setValue(parameters.testFrequencyHz);
+    }
     if (m_agingFrequency != nullptr) {
-        m_agingFrequency->setValue(parameters.testFrequencyHz);
+        m_agingFrequency->setValue(parameters.agingFrequencyHz);
     }
     updateOperationModeUi(false);
     if (m_triggerMode != nullptr) {
@@ -451,10 +470,13 @@ void ParameterPanelWidget::updateOperationModeUi(const bool syncCommands)
         m_blowCountRow->setVisible(agingMode);
     }
     if (m_blowIntervalRow != nullptr) {
-        m_blowIntervalRow->setVisible(agingMode);
+        m_blowIntervalRow->setVisible(false);
+    }
+    if (m_testFrequencyRow != nullptr) {
+        m_testFrequencyRow->setVisible(!agingMode);
     }
     if (m_agingFrequencyRow != nullptr) {
-        m_agingFrequencyRow->setVisible(!agingMode);
+        m_agingFrequencyRow->setVisible(agingMode);
     }
 }
 
@@ -521,10 +543,10 @@ int ParameterPanelWidget::effectiveBlowCountForCurrentMode() const
 int ParameterPanelWidget::effectiveBlowIntervalMsForCurrentMode() const
 {
     if (m_operationModeValue == kOperationModeAging) {
-        return m_blowInterval != nullptr ? m_blowInterval->value() : 10;
+        return intervalMsFromAgingFrequency(m_agingFrequency != nullptr ? m_agingFrequency->value() : 100);
     }
 
-    return intervalMsFromAgingFrequency(m_agingFrequency != nullptr ? m_agingFrequency->value() : 100);
+    return intervalMsFromAgingFrequency(m_testFrequency != nullptr ? m_testFrequency->value() : 100);
 }
 
 int ParameterPanelWidget::agingFrequencyFromIntervalMs(const int intervalMs)

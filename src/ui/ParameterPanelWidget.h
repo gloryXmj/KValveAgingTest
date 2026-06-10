@@ -52,6 +52,7 @@ private:
     QComboBox *m_triggerMode = nullptr;
     QSpinBox *m_blowCount = nullptr;
     QSpinBox *m_blowInterval = nullptr;
+    QSpinBox *m_testFrequency = nullptr;
     QSpinBox *m_agingFrequency = nullptr;
     QDoubleSpinBox *m_blowTime = nullptr;
     QDoubleSpinBox *m_chargeTime = nullptr;
@@ -61,5 +62,6 @@ private:
     QComboBox *m_independentChannelEnable = nullptr;
     QWidget *m_blowCountRow = nullptr;
     QWidget *m_blowIntervalRow = nullptr;
+    QWidget *m_testFrequencyRow = nullptr;
     QWidget *m_agingFrequencyRow = nullptr;
 };

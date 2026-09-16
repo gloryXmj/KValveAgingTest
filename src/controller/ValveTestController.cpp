@@ -139,9 +139,7 @@ void ValveTestController::handleAckFrame(const QByteArray &frame)
         return;
     }
 
-    const CommandPacket completedPacket = m_inFlight->packet;
     completeInFlight();
-    emit commandFinished(completedPacket, true);
     trySendNext();
 }
 
@@ -157,8 +155,7 @@ void ValveTestController::handleAckTimeout()
         return;
     }
 
-    const CommandPacket timedOutPacket = m_inFlight->packet;
-    emit commandTimedOut(int(timedOutPacket.command), int(timedOutPacket.data16));
+    emit commandTimedOut(int(m_inFlight->packet.command), int(m_inFlight->packet.data16));
     emit logGenerated(
         QStringLiteral("TIMEOUT"),
         ProtocolCodec::toHexString(m_inFlight->frame),
@@ -166,7 +163,6 @@ void ValveTestController::handleAckTimeout()
     );
 
     completeInFlight();
-    emit commandFinished(timedOutPacket, false);
     trySendNext();
 }
 
@@ -186,7 +182,6 @@ void ValveTestController::trySendNext()
     if (!m_serialService->writeFrame(pending.frame)) {
         emit commandRejected(QStringLiteral("命令帧发送失败。"));
         emit logGenerated(QStringLiteral("ERR"), ProtocolCodec::toHexString(pending.frame), describeOutgoing(pending.packet));
-        emit commandFinished(pending.packet, false);
         trySendNext();
         return;
     }
@@ -194,6 +189,7 @@ void ValveTestController::trySendNext()
     m_inFlight = pending;
     emit busyChanged(true);
     emit logGenerated(QStringLiteral("TX"), ProtocolCodec::toHexString(pending.frame), describeOutgoing(pending.packet));
+    emit commandSent(pending.packet);
     if (m_ackTimer != nullptr) {
         m_ackTimer->start(m_ackTimeoutMs);
     }
@@ -218,15 +214,7 @@ bool ValveTestController::ackMatchesInFlight(const DecodedFrame &frame) const
         return false;
     }
 
-    if (frame.command != m_inFlight->packet.command) {
-        return false;
-    }
-
-    if (CommandMap::isValveCommand(frame.command)) {
-        return frame.data16 == m_inFlight->packet.data16;
-    }
-
-    return true;
+    return frame.command == m_inFlight->packet.command;
 }
 
 QString ValveTestController::describeOutgoing(const CommandPacket &packet) const

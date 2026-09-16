@@ -61,8 +61,8 @@ private:
     void stopSingleValveCycleTest(int channel, bool sendOff = true);
     void stopAllSingleValveCycleTests();
     void handleSingleValveCycleTimeout(int channel);
-    void handleCommandFinished(const CommandPacket &packet, bool successful);
-    void enqueueSingleValveCycleCommand(int channel, const CommandPacket &packet, bool opening);
+    void handleCommandSent(const CommandPacket &packet);
+    void enqueueSingleValveCycleOpenCommand(int channel, const CommandPacket &packet);
     void setContinuousValve(int channel, int valveNumber);
     void clearContinuousValve(int channel);
     ChannelCardWidget *channelCard(int channel) const;
@@ -88,8 +88,7 @@ private:
     {
         int currentValve = 0;
         int nextValve = 1;
-        bool opening = true;
-        quint64 pendingRequestId = 0;
+        quint64 pendingOpenRequestId = 0;
     };
 
     QHash<int, QTimer *> m_singleValveCycleTimers;

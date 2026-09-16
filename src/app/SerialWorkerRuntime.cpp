@@ -11,7 +11,7 @@ SerialWorkerRuntime::SerialWorkerRuntime(QObject *parent)
     , m_controller(new ValveTestController(m_serialService, this))
 {
     connect(m_controller, &ValveTestController::commandRejected, this, &SerialWorkerRuntime::commandRejected);
-    connect(m_controller, &ValveTestController::commandFinished, this, &SerialWorkerRuntime::commandFinished);
+    connect(m_controller, &ValveTestController::commandSent, this, &SerialWorkerRuntime::commandSent);
     connect(m_controller, &ValveTestController::logGenerated, this, &SerialWorkerRuntime::logGenerated);
     connect(m_controller, &ValveTestController::valveActionConfirmed, this, &SerialWorkerRuntime::valveActionConfirmed);
     connect(m_controller, &ValveTestController::channelAlarmUpdated, this, &SerialWorkerRuntime::channelAlarmUpdated);

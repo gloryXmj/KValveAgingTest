@@ -12,6 +12,8 @@
 
 namespace
 {
+constexpr int kCycleSwitchStabilizationMs = 50;
+
 QString formatTimingMilliseconds(const quint16 rawValue)
 {
     return QStringLiteral("%1 ms").arg(QString::number(double(rawValue) * 0.05, 'f', 2));
@@ -22,9 +24,16 @@ ValveTestController::ValveTestController(SerialPortService *serialService, QObje
     : QObject(parent)
     , m_serialService(serialService)
     , m_ackTimer(new QTimer(this))
+    , m_cycleStabilizationTimer(new QTimer(this))
 {
     m_ackTimer->setSingleShot(true);
     connect(m_ackTimer, &QTimer::timeout, this, &ValveTestController::handleAckTimeout);
+    m_cycleStabilizationTimer->setSingleShot(true);
+    connect(
+        m_cycleStabilizationTimer,
+        &QTimer::timeout,
+        this,
+        &ValveTestController::handleCycleStabilizationTimeout);
     if (m_serialService != nullptr) {
         connect(m_serialService, &SerialPortService::ackFrameReceived, this, &ValveTestController::handleAckFrame);
         connect(m_serialService, &SerialPortService::transportError, this, &ValveTestController::handleTransportError);
@@ -50,6 +59,9 @@ void ValveTestController::closePort()
 
     m_serialService->closePort();
     m_queue.clear();
+    if (m_cycleStabilizationTimer != nullptr) {
+        m_cycleStabilizationTimer->stop();
+    }
     if (m_inFlight.has_value()) {
         m_inFlight.reset();
         if (m_ackTimer != nullptr) {
@@ -71,6 +83,9 @@ void ValveTestController::cancelSingleValveCycleCommands()
     }
     m_queue = retainedCommands;
 
+    if (m_cycleStabilizationTimer != nullptr) {
+        m_cycleStabilizationTimer->stop();
+    }
     emit busyChanged(m_inFlight.has_value());
     trySendNext();
 }
@@ -82,7 +97,8 @@ bool ValveTestController::isConnected() const
 
 bool ValveTestController::isBusy() const
 {
-    return m_inFlight.has_value();
+    return m_inFlight.has_value()
+        || (m_cycleStabilizationTimer != nullptr && m_cycleStabilizationTimer->isActive());
 }
 
 void ValveTestController::setAckTimeoutMs(const int timeoutMs)
@@ -154,7 +170,16 @@ void ValveTestController::handleAckFrame(const QByteArray &frame)
         return;
     }
 
+    const bool requiresStabilization = m_inFlight->packet.purpose
+            == CommandPurpose::SingleValveCycleAction
+        && m_inFlight->packet.command == CommandMap::kValveSwitch;
+
     completeInFlight();
+    if (requiresStabilization && m_cycleStabilizationTimer != nullptr) {
+        m_cycleStabilizationTimer->start(kCycleSwitchStabilizationMs);
+        emit busyChanged(true);
+        return;
+    }
     trySendNext();
 }
 
@@ -181,9 +206,17 @@ void ValveTestController::handleAckTimeout()
     trySendNext();
 }
 
+void ValveTestController::handleCycleStabilizationTimeout()
+{
+    emit busyChanged(false);
+    trySendNext();
+}
+
 void ValveTestController::trySendNext()
 {
-    if (m_inFlight.has_value() || m_queue.isEmpty()) {
+    if (m_inFlight.has_value()
+        || (m_cycleStabilizationTimer != nullptr && m_cycleStabilizationTimer->isActive())
+        || m_queue.isEmpty()) {
         return;
     }
 

@@ -12,8 +12,6 @@
 
 namespace
 {
-constexpr int kCycleValveCloseDelayMs = 50;
-
 QString formatTimingMilliseconds(const quint16 rawValue)
 {
     return QStringLiteral("%1 ms").arg(QString::number(double(rawValue) * 0.05, 'f', 2));
@@ -24,13 +22,9 @@ ValveTestController::ValveTestController(SerialPortService *serialService, QObje
     : QObject(parent)
     , m_serialService(serialService)
     , m_ackTimer(new QTimer(this))
-    , m_cyclePacingTimer(new QTimer(this))
 {
     m_ackTimer->setSingleShot(true);
     connect(m_ackTimer, &QTimer::timeout, this, &ValveTestController::handleAckTimeout);
-    m_cyclePacingTimer->setSingleShot(true);
-    connect(m_cyclePacingTimer, &QTimer::timeout, this, &ValveTestController::handleCyclePacingTimeout);
-
     if (m_serialService != nullptr) {
         connect(m_serialService, &SerialPortService::ackFrameReceived, this, &ValveTestController::handleAckFrame);
         connect(m_serialService, &SerialPortService::transportError, this, &ValveTestController::handleTransportError);
@@ -56,9 +50,6 @@ void ValveTestController::closePort()
 
     m_serialService->closePort();
     m_queue.clear();
-    if (m_cyclePacingTimer != nullptr) {
-        m_cyclePacingTimer->stop();
-    }
     if (m_inFlight.has_value()) {
         m_inFlight.reset();
         if (m_ackTimer != nullptr) {
@@ -80,9 +71,6 @@ void ValveTestController::cancelSingleValveCycleCommands()
     }
     m_queue = retainedCommands;
 
-    if (m_cyclePacingTimer != nullptr) {
-        m_cyclePacingTimer->stop();
-    }
     emit busyChanged(m_inFlight.has_value());
     trySendNext();
 }
@@ -94,8 +82,7 @@ bool ValveTestController::isConnected() const
 
 bool ValveTestController::isBusy() const
 {
-    return m_inFlight.has_value()
-        || (m_cyclePacingTimer != nullptr && m_cyclePacingTimer->isActive());
+    return m_inFlight.has_value();
 }
 
 void ValveTestController::setAckTimeoutMs(const int timeoutMs)
@@ -194,17 +181,9 @@ void ValveTestController::handleAckTimeout()
     trySendNext();
 }
 
-void ValveTestController::handleCyclePacingTimeout()
-{
-    emit busyChanged(false);
-    trySendNext();
-}
-
 void ValveTestController::trySendNext()
 {
-    if (m_inFlight.has_value()
-        || (m_cyclePacingTimer != nullptr && m_cyclePacingTimer->isActive())
-        || m_queue.isEmpty()) {
+    if (m_inFlight.has_value() || m_queue.isEmpty()) {
         return;
     }
 
@@ -222,17 +201,10 @@ void ValveTestController::trySendNext()
         return;
     }
 
+    m_inFlight = pending;
     emit busyChanged(true);
     emit logGenerated(QStringLiteral("TX"), ProtocolCodec::toHexString(pending.frame), describeOutgoing(pending.packet));
     emit commandSent(pending.packet);
-
-    if (pending.packet.purpose == CommandPurpose::SingleValveCycleAction) {
-        const int delayMs = pending.packet.data16 == 0 ? kCycleValveCloseDelayMs : 0;
-        m_cyclePacingTimer->start(delayMs);
-        return;
-    }
-
-    m_inFlight = pending;
     if (m_ackTimer != nullptr) {
         m_ackTimer->start(m_ackTimeoutMs);
     }

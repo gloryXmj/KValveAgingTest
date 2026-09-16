@@ -45,7 +45,6 @@ private slots:
     void handleAckFrame(const QByteArray &frame);
     void handleTransportError(const QString &message);
     void handleAckTimeout();
-    void handleCyclePacingTimeout();
 
 private:
     struct PendingCommand
@@ -65,6 +64,5 @@ private:
     QQueue<PendingCommand> m_queue;
     std::optional<PendingCommand> m_inFlight;
     QTimer *m_ackTimer = nullptr;
-    QTimer *m_cyclePacingTimer = nullptr;
     int m_ackTimeoutMs = 500;
 };

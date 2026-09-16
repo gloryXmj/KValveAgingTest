@@ -59,11 +59,12 @@ private:
     void handleTriggerModeChanged(int triggerMode);
     void startSingleValveCycleTests();
     void startSingleValveCycleTest(int channel);
-    void stopSingleValveCycleTest(int channel, bool sendOff = true);
-    void stopAllSingleValveCycleTests();
+    void stopSingleValveCycleTest(int channel);
+    void stopAllSingleValveCycleTests(bool sendOff = true);
     void handleSingleValveCycleTimeout(int channel);
     void handleCommandSent(const CommandPacket &packet);
-    void enqueueSingleValveCycleOpenCommand(int channel, const CommandPacket &packet);
+    quint64 enqueueSingleValveCycleSequence(int channel, int valveNumber);
+    CommandPacket makeSingleValveCycleCommand(quint8 command, quint16 data16);
     void setContinuousValve(int channel, int valveNumber);
     void clearContinuousValve(int channel);
     ChannelCardWidget *channelCard(int channel) const;
@@ -97,6 +98,9 @@ private:
     quint64 m_nextCycleRequestId = 1;
     int m_manualContinuousChannel = 0;
     int m_manualContinuousValve = 0;
+    int m_manualPendingChannel = 0;
+    int m_manualPendingValve = 0;
+    quint64 m_manualPendingRequestId = 0;
 
     QComboBox *m_portCombo = nullptr;
     QComboBox *m_baudCombo = nullptr;

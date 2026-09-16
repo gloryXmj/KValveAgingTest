@@ -113,6 +113,7 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
         connect(this, &MainWindow::requestAvailablePorts, m_runtime, &SerialWorkerRuntime::requestAvailablePorts, Qt::QueuedConnection);
         connect(this, &MainWindow::requestOpenPort, m_runtime, &SerialWorkerRuntime::requestOpenPort, Qt::QueuedConnection);
         connect(this, &MainWindow::requestClosePort, m_runtime, &SerialWorkerRuntime::requestClosePort, Qt::QueuedConnection);
+        connect(this, &MainWindow::requestCancelSingleValveCycleCommands, m_runtime, &SerialWorkerRuntime::requestCancelSingleValveCycleCommands, Qt::QueuedConnection);
         connect(this, &MainWindow::requestEnqueueCommand, m_runtime, &SerialWorkerRuntime::requestEnqueueCommand, Qt::QueuedConnection);
 
         connect(m_runtime, &SerialWorkerRuntime::portsReady, this, &MainWindow::handlePortsReady, Qt::QueuedConnection);
@@ -176,6 +177,10 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
             m_firmwareValue->setText(versionText);
         }, Qt::QueuedConnection);
         connect(m_runtime, &SerialWorkerRuntime::valveActionConfirmed, this, [this](const int channel, const QList<int> &valves) {
+            if (m_singleValveCycleStates.contains(channel)
+                || m_manualContinuousChannel == channel) {
+                return;
+            }
             for (auto *card : m_channelCards) {
                 if (card != nullptr && card->channelNumber() == channel) {
                     card->pulseValves(valves);
@@ -847,6 +852,7 @@ void MainWindow::stopSingleValveCycleTest(const int channel, const bool sendOff)
 
 void MainWindow::stopAllSingleValveCycleTests()
 {
+    emit requestCancelSingleValveCycleCommands();
     const QList<int> channels = m_singleValveCycleStates.keys();
     for (const int channel : channels) {
         stopSingleValveCycleTest(channel);
@@ -878,7 +884,9 @@ void MainWindow::handleSingleValveCycleTimeout(const int channel)
     }
 
     stateIt->nextValve = nextValve;
-    emit requestEnqueueCommand(*offPacket, QString());
+    CommandPacket trackedOffPacket = *offPacket;
+    trackedOffPacket.purpose = CommandPurpose::SingleValveCycleAction;
+    emit requestEnqueueCommand(trackedOffPacket, QString());
     enqueueSingleValveCycleOpenCommand(channel, *onPacket);
 }
 

@@ -20,6 +20,7 @@ public slots:
     void requestAvailablePorts();
     void requestOpenPort(const SerialPortSettings &settings);
     void requestClosePort();
+    void requestCancelSingleValveCycleCommands();
     void requestEnqueueCommand(const CommandPacket &packet, const QString &password);
 
 signals:

@@ -35,6 +35,11 @@ void SerialWorkerRuntime::requestClosePort()
     m_controller->closePort();
 }
 
+void SerialWorkerRuntime::requestCancelSingleValveCycleCommands()
+{
+    m_controller->cancelSingleValveCycleCommands();
+}
+
 void SerialWorkerRuntime::requestEnqueueCommand(const CommandPacket &packet, const QString &password)
 {
     m_controller->enqueueCommand(packet, password);

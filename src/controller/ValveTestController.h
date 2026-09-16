@@ -23,6 +23,7 @@ public:
     QVector<SerialPortDescriptor> availablePorts() const;
     bool openPort(const SerialPortSettings &settings);
     void closePort();
+    void cancelSingleValveCycleCommands();
     bool isConnected() const;
     bool isBusy() const;
 
@@ -44,6 +45,7 @@ private slots:
     void handleAckFrame(const QByteArray &frame);
     void handleTransportError(const QString &message);
     void handleAckTimeout();
+    void handleCyclePacingTimeout();
 
 private:
     struct PendingCommand
@@ -63,5 +65,6 @@ private:
     QQueue<PendingCommand> m_queue;
     std::optional<PendingCommand> m_inFlight;
     QTimer *m_ackTimer = nullptr;
+    QTimer *m_cyclePacingTimer = nullptr;
     int m_ackTimeoutMs = 500;
 };

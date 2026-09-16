@@ -16,6 +16,7 @@ public:
     bool isPulsing() const;
     void pulse(int durationMs = 50);
     void setLargeTouchMode(bool enabled);
+    void setContinuous(bool enabled);
 
 protected:
     void paintEvent(QPaintEvent *event) override;
@@ -33,6 +34,7 @@ private:
     int m_channel = 0;
     int m_valveNumber = 0;
     bool m_pulsing = false;
+    bool m_continuous = false;
     bool m_hovered = false;
     bool m_largeTouchMode = false;
     QTimer *m_pulseTimer = nullptr;

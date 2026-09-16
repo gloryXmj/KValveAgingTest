@@ -21,6 +21,8 @@ public:
     void setVisibleValveCount(int count);
     void setLargeTouchMode(bool enabled);
     void pulseValves(const QList<int> &valveNumbers);
+    void setContinuousValve(int valveNumber);
+    void clearContinuousValve();
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
 

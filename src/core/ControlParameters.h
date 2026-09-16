@@ -13,6 +13,7 @@ struct ControlParameters
     int blowIntervalMs = 10;
     int testFrequencyHz = 100;
     int agingFrequencyHz = 100;
+    int singleValveTestTimeMs = 10000;
     double blowTimeMs = 2.0;
     double chargeTimeMs = 1.0;
     double stopChargeTimeMs = 1.5;

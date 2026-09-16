@@ -22,6 +22,8 @@ public:
     void setVisibleValveCount(int count);
     void setAbnormal(bool abnormal);
     void setLargeTouchMode(bool enabled);
+    void setContinuousValve(int valveNumber);
+    void clearContinuousValve();
 
 signals:
     void valveInvoked(int channel, int valveNumber);

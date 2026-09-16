@@ -87,6 +87,20 @@ void ValveGridWidget::pulseValves(const QList<int> &valveNumbers)
     }
 }
 
+void ValveGridWidget::setContinuousValve(const int valveNumber)
+{
+    for (auto it = m_indicators.begin(); it != m_indicators.end(); ++it) {
+        it.value()->setContinuous(it.key() == valveNumber);
+    }
+}
+
+void ValveGridWidget::clearContinuousValve()
+{
+    for (auto it = m_indicators.begin(); it != m_indicators.end(); ++it) {
+        it.value()->setContinuous(false);
+    }
+}
+
 QSize ValveGridWidget::sizeHint() const
 {
     return QSize(width() > 0 ? width() : kDefaultLayoutWidth, height());

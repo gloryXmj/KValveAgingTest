@@ -176,6 +176,20 @@ void ChannelCardWidget::setLargeTouchMode(const bool enabled)
     updateGeometry();
 }
 
+void ChannelCardWidget::setContinuousValve(const int valveNumber)
+{
+    if (m_grid != nullptr) {
+        m_grid->setContinuousValve(valveNumber);
+    }
+}
+
+void ChannelCardWidget::clearContinuousValve()
+{
+    if (m_grid != nullptr) {
+        m_grid->clearContinuousValve();
+    }
+}
+
 void ChannelCardWidget::refreshVisualState()
 {
     setProperty("alarm", m_abnormal);

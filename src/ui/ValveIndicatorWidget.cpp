@@ -75,10 +75,10 @@ void ValveIndicatorWidget::paintEvent(QPaintEvent *)
         textHeight
     );
 
-    const QColor fillColor = m_pulsing
+    const QColor fillColor = (m_pulsing || m_continuous)
         ? QColor(QStringLiteral("#12B76A"))
         : (m_hovered ? QColor(QStringLiteral("#DCE7F8")) : QColor(QStringLiteral("#EEF3F8")));
-    const QColor borderColor = m_pulsing
+    const QColor borderColor = (m_pulsing || m_continuous)
         ? QColor(QStringLiteral("#039855"))
         : (m_hovered ? QColor(QStringLiteral("#8DA8C9")) : QColor(QStringLiteral("#C7D4E2")));
     const QColor textColor = QColor(QStringLiteral("#14324D"));
@@ -129,5 +129,15 @@ void ValveIndicatorWidget::setPulsing(const bool pulsing)
     }
 
     m_pulsing = pulsing;
+    update();
+}
+
+void ValveIndicatorWidget::setContinuous(const bool enabled)
+{
+    if (m_continuous == enabled) {
+        return;
+    }
+
+    m_continuous = enabled;
     update();
 }

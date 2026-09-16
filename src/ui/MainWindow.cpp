@@ -28,6 +28,7 @@
 #include <QStatusBar>
 #include <QStyle>
 #include <QStringList>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include <optional>
@@ -118,6 +119,12 @@ MainWindow::MainWindow(SerialWorkerRuntime *runtime, AppSettings *settings, QWid
         connect(m_runtime, &SerialWorkerRuntime::connectionChanged, this, [this](const bool connected) {
             m_connected = connected;
             if (!connected) {
+                stopAllSingleValveCycleTests();
+                if (m_manualContinuousChannel > 0) {
+                    clearContinuousValve(m_manualContinuousChannel);
+                    m_manualContinuousChannel = 0;
+                    m_manualContinuousValve = 0;
+                }
                 m_abnormalChannels.clear();
                 m_hasCommunicationFault = true;
             }
@@ -212,6 +219,13 @@ void MainWindow::closeEvent(QCloseEvent *event)
             m_settings->saveControlParameters(m_parameterPanel->currentControlParameters());
         }
         m_settings->saveVisibleValveCount(m_visibleValveCountSpin != nullptr ? m_visibleValveCountSpin->value() : m_savedVisibleValveCount);
+    }
+
+    stopAllSingleValveCycleTests();
+    if (m_manualContinuousChannel > 0) {
+        clearContinuousValve(m_manualContinuousChannel);
+        m_manualContinuousChannel = 0;
+        m_manualContinuousValve = 0;
     }
 
     QMainWindow::closeEvent(event);
@@ -325,7 +339,24 @@ void MainWindow::buildUi()
     m_parameterPanel = new ParameterPanelWidget(m_parameterScroll);
     m_parameterPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     connect(m_parameterPanel, &ParameterPanelWidget::commandRequested, this, &MainWindow::handleCommandRequest);
+    connect(m_parameterPanel, &ParameterPanelWidget::triggerModeChanged, this, &MainWindow::handleTriggerModeChanged);
+    connect(m_parameterPanel, &ParameterPanelWidget::singleValveCycleToggled, this, &MainWindow::handleSingleValveCycleToggled);
     connect(m_parameterPanel, &ParameterPanelWidget::generalBatchRequested, this, [this]() {
+        stopAllSingleValveCycleTests();
+        if (m_parameterPanel != nullptr) {
+            m_parameterPanel->setSingleValveCycleRunning(false);
+        }
+        if (m_manualContinuousChannel > 0) {
+            const auto offPacket = ValveAddressResolver::buildValveOffCommand(
+                m_manualContinuousChannel,
+                m_manualContinuousValve);
+            if (offPacket.has_value()) {
+                emit requestEnqueueCommand(*offPacket, QString());
+            }
+            clearContinuousValve(m_manualContinuousChannel);
+            m_manualContinuousChannel = 0;
+            m_manualContinuousValve = 0;
+        }
         if (m_parameterPanel != nullptr) {
             enqueueCommands(m_parameterPanel->generalParameterCommands());
         }
@@ -357,15 +388,7 @@ void MainWindow::buildUi()
     for (int channel = 1; channel <= 8; ++channel) {
         auto *card = new ChannelCardWidget(channel, m_cardsPage);
         card->setVisibleValveCount(m_savedVisibleValveCount);
-        connect(card, &ChannelCardWidget::valveInvoked, this, [this](const int invokedChannel, const int valveNumber) {
-            const auto packet = ValveAddressResolver::buildSingleValveCommand(invokedChannel, valveNumber);
-            if (!packet.has_value()) {
-                statusBar()->showMessage(QStringLiteral("通道或阀号无效。"), 5000);
-                return;
-            }
-
-            emit requestEnqueueCommand(*packet, QString());
-        });
+        connect(card, &ChannelCardWidget::valveInvoked, this, &MainWindow::handleValveInvoked);
 
         const int zeroBased = channel - 1;
         m_cardsLayout->addWidget(card, zeroBased / 2, zeroBased % 2);
@@ -421,6 +444,18 @@ void MainWindow::applySavedSettings()
 
 void MainWindow::applyVisibleValveCount(const int count)
 {
+    stopAllSingleValveCycleTests();
+    if (m_manualContinuousChannel > 0) {
+        const auto offPacket = ValveAddressResolver::buildValveOffCommand(
+            m_manualContinuousChannel,
+            m_manualContinuousValve);
+        if (offPacket.has_value()) {
+            emit requestEnqueueCommand(*offPacket, QString());
+        }
+        clearContinuousValve(m_manualContinuousChannel);
+        m_manualContinuousChannel = 0;
+        m_manualContinuousValve = 0;
+    }
     m_savedVisibleValveCount = qBound(1, count, CommandMap::kValvesPerChannel);
 
     for (auto *card : m_channelCards) {
@@ -591,6 +626,247 @@ void MainWindow::handleTimingBatchRequest()
     }
 
     enqueueCommands(m_parameterPanel->timingParameterCommands(), password);
+}
+
+ChannelCardWidget *MainWindow::channelCard(const int channel) const
+{
+    for (auto *card : m_channelCards) {
+        if (card != nullptr && card->channelNumber() == channel) {
+            return card;
+        }
+    }
+    return nullptr;
+}
+
+void MainWindow::setContinuousValve(const int channel, const int valveNumber)
+{
+    if (auto *card = channelCard(channel); card != nullptr) {
+        card->setContinuousValve(valveNumber);
+    }
+}
+
+void MainWindow::clearContinuousValve(const int channel)
+{
+    if (auto *card = channelCard(channel); card != nullptr) {
+        card->clearContinuousValve();
+    }
+}
+
+void MainWindow::handleValveInvoked(const int channel, const int valveNumber)
+{
+    stopAllSingleValveCycleTests();
+
+    const bool continuousValveMode = m_parameterPanel != nullptr
+        && m_parameterPanel->currentControlParameters().operationMode == 0
+        && m_parameterPanel->currentControlParameters().triggerMode
+            == ParameterPanelWidget::kSoftwareSingleValveCycleMode;
+
+    const auto packet = ValveAddressResolver::buildSingleValveCommand(channel, valveNumber);
+    if (!packet.has_value()) {
+        statusBar()->showMessage(QStringLiteral("通道或阀号无效。"), 5000);
+        return;
+    }
+
+    if (!continuousValveMode) {
+        emit requestEnqueueCommand(*packet, QString());
+        statusBar()->showMessage(
+            QStringLiteral("已发送通道 %1 的阀 %2 测试命令。").arg(channel).arg(valveNumber),
+            3000);
+        return;
+    }
+
+    if (m_manualContinuousChannel == channel && m_manualContinuousValve == valveNumber) {
+        const auto offPacket = ValveAddressResolver::buildValveOffCommand(channel, valveNumber);
+        if (offPacket.has_value()) {
+            emit requestEnqueueCommand(*offPacket, QString());
+        }
+        clearContinuousValve(channel);
+        m_manualContinuousChannel = 0;
+        m_manualContinuousValve = 0;
+        statusBar()->showMessage(
+            QStringLiteral("已停止通道 %1 的阀 %2 持续吹气。").arg(channel).arg(valveNumber),
+            3000);
+        return;
+    }
+
+    if (m_manualContinuousChannel > 0) {
+        const auto offPacket = ValveAddressResolver::buildValveOffCommand(
+            m_manualContinuousChannel,
+            m_manualContinuousValve);
+        if (offPacket.has_value()) {
+            emit requestEnqueueCommand(*offPacket, QString());
+        }
+        clearContinuousValve(m_manualContinuousChannel);
+    }
+
+    if (m_parameterPanel != nullptr) {
+        enqueueCommands(m_parameterPanel->singleValveCycleCommands());
+    }
+    emit requestEnqueueCommand(*packet, QString());
+    setContinuousValve(channel, valveNumber);
+    m_manualContinuousChannel = channel;
+    m_manualContinuousValve = valveNumber;
+    statusBar()->showMessage(
+        QStringLiteral("通道 %1 的阀 %2 正在持续吹气，再次点击可停止。").arg(channel).arg(valveNumber),
+        3000);
+}
+
+void MainWindow::handleTriggerModeChanged(const int triggerMode)
+{
+    stopAllSingleValveCycleTests();
+
+    if (m_manualContinuousChannel > 0) {
+        const auto offPacket = ValveAddressResolver::buildValveOffCommand(
+            m_manualContinuousChannel,
+            m_manualContinuousValve);
+        if (offPacket.has_value()) {
+            emit requestEnqueueCommand(*offPacket, QString());
+        }
+        clearContinuousValve(m_manualContinuousChannel);
+        m_manualContinuousChannel = 0;
+        m_manualContinuousValve = 0;
+    }
+
+    if (triggerMode == ParameterPanelWidget::kSoftwareSingleValveCycleMode
+        && m_parameterPanel != nullptr) {
+        enqueueCommands(m_parameterPanel->singleValveCycleCommands());
+    }
+}
+
+void MainWindow::handleSingleValveCycleToggled(const bool running)
+{
+    if (running) {
+        startSingleValveCycleTests();
+    } else {
+        stopAllSingleValveCycleTests();
+    }
+}
+
+void MainWindow::startSingleValveCycleTests()
+{
+    if (m_parameterPanel == nullptr) {
+        return;
+    }
+
+    const ControlParameters parameters = m_parameterPanel->currentControlParameters();
+    if (parameters.operationMode != 0
+        || parameters.triggerMode != ParameterPanelWidget::kSoftwareSingleValveCycleMode) {
+        m_parameterPanel->setSingleValveCycleRunning(false);
+        statusBar()->showMessage(QStringLiteral("单阀循环递增仅支持测试模式。"), 5000);
+        return;
+    }
+
+    stopAllSingleValveCycleTests();
+
+    if (m_manualContinuousChannel > 0) {
+        const auto offPacket = ValveAddressResolver::buildValveOffCommand(
+            m_manualContinuousChannel,
+            m_manualContinuousValve);
+        if (offPacket.has_value()) {
+            emit requestEnqueueCommand(*offPacket, QString());
+        }
+        clearContinuousValve(m_manualContinuousChannel);
+        m_manualContinuousChannel = 0;
+        m_manualContinuousValve = 0;
+    }
+
+    enqueueCommands(m_parameterPanel->singleValveCycleCommands());
+
+    const int channelCount = qBound(1, parameters.channelCount, CommandMap::kChannelCountSupported);
+    for (int channel = 1; channel <= channelCount; ++channel) {
+        startSingleValveCycleTest(channel);
+    }
+
+    if (m_singleValveCycleValves.isEmpty()) {
+        m_parameterPanel->setSingleValveCycleRunning(false);
+        return;
+    }
+
+    m_parameterPanel->setSingleValveCycleRunning(true);
+    statusBar()->showMessage(QStringLiteral("已开始单阀循环递增。"), 3000);
+}
+
+void MainWindow::startSingleValveCycleTest(const int channel)
+{
+    if (m_parameterPanel == nullptr) {
+        return;
+    }
+
+    const auto packet = ValveAddressResolver::buildSingleValveCommand(channel, 1);
+    if (!packet.has_value()) {
+        return;
+    }
+
+    emit requestEnqueueCommand(*packet, QString());
+    setContinuousValve(channel, 1);
+    m_singleValveCycleValves.insert(channel, 1);
+
+    auto *timer = m_singleValveCycleTimers.value(channel, nullptr);
+    if (timer == nullptr) {
+        timer = new QTimer(this);
+        timer->setSingleShot(true);
+        m_singleValveCycleTimers.insert(channel, timer);
+        connect(timer, &QTimer::timeout, this, [this, channel]() {
+            handleSingleValveCycleTimeout(channel);
+        });
+    }
+    timer->start(qMax(1, m_parameterPanel->singleValveTestTimeMs()));
+}
+
+void MainWindow::stopSingleValveCycleTest(const int channel, const bool sendOff)
+{
+    if (auto *timer = m_singleValveCycleTimers.value(channel, nullptr); timer != nullptr) {
+        timer->stop();
+    }
+
+    const int valveNumber = m_singleValveCycleValves.take(channel);
+    if (sendOff && valveNumber > 0) {
+        const auto offPacket = ValveAddressResolver::buildValveOffCommand(channel, valveNumber);
+        if (offPacket.has_value()) {
+            emit requestEnqueueCommand(*offPacket, QString());
+        }
+    }
+    if (valveNumber > 0) {
+        clearContinuousValve(channel);
+    }
+}
+
+void MainWindow::stopAllSingleValveCycleTests()
+{
+    const QList<int> channels = m_singleValveCycleValves.keys();
+    for (const int channel : channels) {
+        stopSingleValveCycleTest(channel);
+    }
+    if (m_parameterPanel != nullptr) {
+        m_parameterPanel->setSingleValveCycleRunning(false);
+    }
+}
+
+void MainWindow::handleSingleValveCycleTimeout(const int channel)
+{
+    if (!m_singleValveCycleValves.contains(channel) || m_parameterPanel == nullptr) {
+        return;
+    }
+
+    const int oldValve = m_singleValveCycleValves.value(channel);
+    const int valveCount = qBound(1, m_savedVisibleValveCount, CommandMap::kValvesPerChannel);
+    const int nextValve = oldValve >= valveCount ? 1 : oldValve + 1;
+
+    const auto offPacket = ValveAddressResolver::buildValveOffCommand(channel, oldValve);
+    const auto onPacket = ValveAddressResolver::buildSingleValveCommand(channel, nextValve);
+    if (!offPacket.has_value() || !onPacket.has_value()) {
+        stopSingleValveCycleTest(channel, false);
+        return;
+    }
+
+    emit requestEnqueueCommand(*offPacket, QString());
+    emit requestEnqueueCommand(*onPacket, QString());
+    m_singleValveCycleValves.insert(channel, nextValve);
+    setContinuousValve(channel, nextValve);
+
+    if (auto *timer = m_singleValveCycleTimers.value(channel, nullptr); timer != nullptr) {
+        timer->start(qMax(1, m_parameterPanel->singleValveTestTimeMs()));
+    }
 }
 
 bool MainWindow::requestProtectedPassword(

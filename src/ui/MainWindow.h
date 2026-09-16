@@ -5,6 +5,7 @@
 #include "src/serial/SerialPortTypes.h"
 
 #include <QMainWindow>
+#include <QHash>
 #include <QSet>
 #include <QVector>
 
@@ -18,6 +19,7 @@ class QLabel;
 class QPushButton;
 class QScrollArea;
 class QSpinBox;
+class QTimer;
 class SerialWorkerRuntime;
 class QWidget;
 
@@ -51,6 +53,17 @@ private:
     void handlePortsReady(const QVector<SerialPortDescriptor> &ports);
     void handleCommandRequest(const CommandPacket &packet, bool passwordRequired);
     void handleTimingBatchRequest();
+    void handleValveInvoked(int channel, int valveNumber);
+    void handleSingleValveCycleToggled(bool running);
+    void handleTriggerModeChanged(int triggerMode);
+    void startSingleValveCycleTests();
+    void startSingleValveCycleTest(int channel);
+    void stopSingleValveCycleTest(int channel, bool sendOff = true);
+    void stopAllSingleValveCycleTests();
+    void handleSingleValveCycleTimeout(int channel);
+    void setContinuousValve(int channel, int valveNumber);
+    void clearContinuousValve(int channel);
+    ChannelCardWidget *channelCard(int channel) const;
     bool requestProtectedPassword(
         const QString &prompt,
         const QString &successMessage,
@@ -69,6 +82,10 @@ private:
     bool m_autoConnectPending = false;
     bool m_autoApplyGeneralParametersPending = false;
     QSet<int> m_abnormalChannels;
+    QHash<int, QTimer *> m_singleValveCycleTimers;
+    QHash<int, int> m_singleValveCycleValves;
+    int m_manualContinuousChannel = 0;
+    int m_manualContinuousValve = 0;
 
     QComboBox *m_portCombo = nullptr;
     QComboBox *m_baudCombo = nullptr;

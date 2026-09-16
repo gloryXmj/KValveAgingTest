@@ -157,12 +157,35 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
 
     m_triggerMode = new QComboBox(generalGroup);
     prepareTouchComboBox(m_triggerMode);
+    m_singleValveCycleButton = new QPushButton(QStringLiteral("开始单阀循环"), generalGroup);
+    m_singleValveCycleButton->setCheckable(true);
+    m_singleValveCycleButton->setProperty("cycleTest", true);
+    connect(m_singleValveCycleButton, &QPushButton::toggled, this, [this](const bool running) {
+        m_singleValveCycleButton->setText(running ? QStringLiteral("停止单阀循环") : QStringLiteral("开始单阀循环"));
+        emit singleValveCycleToggled(running);
+    });
     connect(m_triggerMode, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](const int index) {
         Q_UNUSED(index);
-        emitParameterCommand(CommandMap::kTriggerMode, quint16(m_triggerMode->currentData().toUInt()), false);
+        const int triggerMode = m_triggerMode->currentData().toInt();
+        emit triggerModeChanged(triggerMode);
+        if (triggerMode != kSoftwareSingleValveCycleMode) {
+            emitParameterCommand(CommandMap::kTriggerMode, quint16(triggerMode), false);
+        }
+        if (m_singleValveCycleButton != nullptr) {
+            m_singleValveCycleButton->setVisible(
+                m_operationModeValue == kOperationModeTest
+                && triggerMode == kSoftwareSingleValveCycleMode);
+        }
         emitControlParametersChanged();
     });
-    generalLayout->addWidget(makeFieldRow(QStringLiteral("触发模式"), m_triggerMode, generalGroup));
+    auto *triggerModeEditor = new QWidget(generalGroup);
+    auto *triggerModeEditorLayout = new QHBoxLayout(triggerModeEditor);
+    triggerModeEditorLayout->setContentsMargins(0, 0, 0, 0);
+    triggerModeEditorLayout->setSpacing(8);
+    triggerModeEditorLayout->addWidget(m_triggerMode, 1);
+    triggerModeEditorLayout->addWidget(m_singleValveCycleButton);
+    m_triggerModeRow = makeFieldRow(QStringLiteral("触发模式"), triggerModeEditor, generalGroup);
+    generalLayout->addWidget(m_triggerModeRow);
 
     m_blowCount = new QSpinBox(generalGroup);
     m_blowCount->setRange(0, 65535);
@@ -201,6 +224,25 @@ ParameterPanelWidget::ParameterPanelWidget(QWidget *parent)
         new TouchSpinBoxWidget(m_testFrequency, 148, QStringLiteral("输入测试频率(次/秒)"), generalGroup),
         generalGroup);
     generalLayout->addWidget(m_testFrequencyRow);
+
+    m_singleValveTestTime = new QSpinBox(generalGroup);
+    m_singleValveTestTime->setRange(1, 86400000);
+    m_singleValveTestTime->setValue(10000);
+    m_singleValveTestTime->setSuffix(QStringLiteral(" ms"));
+    connect(
+        m_singleValveTestTime,
+        qOverload<int>(&QSpinBox::valueChanged),
+        this,
+        &ParameterPanelWidget::emitControlParametersChanged);
+    m_singleValveTestTimeRow = makeFieldRow(
+        QStringLiteral("单阀测试时间"),
+        new TouchSpinBoxWidget(
+            m_singleValveTestTime,
+            148,
+            QStringLiteral("输入单阀测试时间(ms)"),
+            generalGroup),
+        generalGroup);
+    generalLayout->addWidget(m_singleValveTestTimeRow);
 
     m_agingFrequency = new QSpinBox(generalGroup);
     m_agingFrequency->setRange(1, 1000);
@@ -340,6 +382,7 @@ ControlParameters ParameterPanelWidget::currentControlParameters() const
     parameters.blowIntervalMs = intervalMsFromAgingFrequency(m_agingFrequency != nullptr ? m_agingFrequency->value() : 100);
     parameters.testFrequencyHz = m_testFrequency != nullptr ? m_testFrequency->value() : 100;
     parameters.agingFrequencyHz = m_agingFrequency != nullptr ? m_agingFrequency->value() : 100;
+    parameters.singleValveTestTimeMs = m_singleValveTestTime != nullptr ? m_singleValveTestTime->value() : 10000;
     parameters.blowTimeMs = m_blowTime != nullptr ? m_blowTime->value() : 2.0;
     parameters.chargeTimeMs = m_chargeTime != nullptr ? m_chargeTime->value() : 1.0;
     parameters.stopChargeTimeMs = m_stopChargeTime != nullptr ? m_stopChargeTime->value() : 1.5;
@@ -361,6 +404,7 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
     const QSignalBlocker blowIntervalBlocker(m_blowInterval);
     const QSignalBlocker testFrequencyBlocker(m_testFrequency);
     const QSignalBlocker agingFrequencyBlocker(m_agingFrequency);
+    const QSignalBlocker singleValveTestTimeBlocker(m_singleValveTestTime);
     const QSignalBlocker blowTimeBlocker(m_blowTime);
     const QSignalBlocker chargeTimeBlocker(m_chargeTime);
     const QSignalBlocker stopChargeTimeBlocker(m_stopChargeTime);
@@ -387,6 +431,9 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
     if (m_agingFrequency != nullptr) {
         m_agingFrequency->setValue(parameters.agingFrequencyHz);
     }
+    if (m_singleValveTestTime != nullptr) {
+        m_singleValveTestTime->setValue(qBound(1, parameters.singleValveTestTimeMs, 86400000));
+    }
     updateOperationModeUi(false);
     if (m_triggerMode != nullptr) {
         int triggerMode = parameters.triggerMode;
@@ -395,6 +442,7 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
         }
         setComboData(m_triggerMode, triggerMode);
     }
+    updateOperationModeUi(false);
     if (m_blowTime != nullptr) {
         m_blowTime->setValue(parameters.blowTimeMs);
     }
@@ -416,14 +464,46 @@ void ParameterPanelWidget::applyControlParameters(const ControlParameters &param
 QVector<CommandPacket> ParameterPanelWidget::generalParameterCommands() const
 {
     const ControlParameters parameters = currentControlParameters();
+    const int triggerMode = parameters.triggerMode == kSoftwareSingleValveCycleMode
+        ? kTriggerSingleCycle
+        : parameters.triggerMode;
     return QVector<CommandPacket>{
         makePacket(CommandMap::kChannelCount, quint16(parameters.channelCount)),
         makePacket(CommandMap::kIndependentChannelEnable, quint16(parameters.independentChannelEnable)),
-        makePacket(CommandMap::kTriggerMode, quint16(parameters.triggerMode)),
+        makePacket(CommandMap::kTriggerMode, quint16(triggerMode)),
         makePacket(CommandMap::kBlowCount, quint16(effectiveBlowCountForCurrentMode())),
         makePacket(CommandMap::kBlowInterval, quint16(effectiveBlowIntervalMsForCurrentMode())),
         makePacket(CommandMap::kValveSwitch, quint16(parameters.valveSwitch)),
     };
+}
+
+QVector<CommandPacket> ParameterPanelWidget::singleValveCycleCommands() const
+{
+    const int frequency = m_testFrequency != nullptr ? m_testFrequency->value() : 100;
+    return QVector<CommandPacket>{
+        makePacket(CommandMap::kTriggerMode, quint16(kTriggerSingleCycle)),
+        makePacket(CommandMap::kBlowCount, 1u),
+        makePacket(CommandMap::kBlowInterval, quint16(intervalMsFromAgingFrequency(frequency))),
+    };
+}
+
+int ParameterPanelWidget::singleValveTestTimeMs() const
+{
+    return m_singleValveTestTime != nullptr ? m_singleValveTestTime->value() : 10000;
+}
+
+void ParameterPanelWidget::setSingleValveCycleRunning(const bool running)
+{
+    if (m_singleValveCycleButton == nullptr) {
+        return;
+    }
+
+    const QSignalBlocker blocker(m_singleValveCycleButton);
+    m_singleValveCycleButton->setChecked(running);
+    m_singleValveCycleButton->setText(
+        running ? QStringLiteral("停止单阀循环") : QStringLiteral("开始单阀循环"));
+    m_singleValveCycleButton->style()->unpolish(m_singleValveCycleButton);
+    m_singleValveCycleButton->style()->polish(m_singleValveCycleButton);
 }
 
 QVector<CommandPacket> ParameterPanelWidget::timingParameterCommands() const
@@ -478,6 +558,18 @@ void ParameterPanelWidget::updateOperationModeUi(const bool syncCommands)
     if (m_agingFrequencyRow != nullptr) {
         m_agingFrequencyRow->setVisible(agingMode);
     }
+    if (m_singleValveTestTimeRow != nullptr) {
+        m_singleValveTestTimeRow->setVisible(!agingMode);
+    }
+    if (m_singleValveCycleButton != nullptr) {
+        const bool softwareMode = !agingMode
+            && m_triggerMode != nullptr
+            && m_triggerMode->currentData().toInt() == kSoftwareSingleValveCycleMode;
+        if (!softwareMode && m_singleValveCycleButton->isChecked()) {
+            setSingleValveCycleRunning(false);
+        }
+        m_singleValveCycleButton->setVisible(softwareMode);
+    }
 }
 
 void ParameterPanelWidget::updateOperationModeButtons()
@@ -508,6 +600,7 @@ void ParameterPanelWidget::rebuildTriggerModeOptions(const bool syncCommand)
         m_triggerMode->addItem(QStringLiteral("单次递增"), kTriggerSingleIncrement);
         m_triggerMode->addItem(QStringLiteral("单次循环"), kTriggerSingleCycle);
         m_triggerMode->addItem(QStringLiteral("循环递增"), kTriggerIncrementCycle);
+        m_triggerMode->addItem(QStringLiteral("单阀循环递增"), kSoftwareSingleValveCycleMode);
     }
 
     int targetValue = previousValue;

@@ -18,17 +18,24 @@ class ParameterPanelWidget : public QFrame
     Q_OBJECT
 
 public:
+    static constexpr int kSoftwareSingleValveCycleMode = 6;
+
     explicit ParameterPanelWidget(QWidget *parent = nullptr);
 
     ControlParameters currentControlParameters() const;
     void applyControlParameters(const ControlParameters &parameters);
     QVector<CommandPacket> generalParameterCommands() const;
+    QVector<CommandPacket> singleValveCycleCommands() const;
     QVector<CommandPacket> timingParameterCommands() const;
+    int singleValveTestTimeMs() const;
+    void setSingleValveCycleRunning(bool running);
 
 signals:
     void commandRequested(const CommandPacket &packet, bool passwordRequired);
     void generalBatchRequested();
     void timingBatchRequested();
+    void triggerModeChanged(int triggerMode);
+    void singleValveCycleToggled(bool running);
     void controlParametersChanged(const ControlParameters &parameters);
 
 private:
@@ -48,12 +55,14 @@ private:
     int m_operationModeValue = 0;
     QPushButton *m_testModeButton = nullptr;
     QPushButton *m_agingModeButton = nullptr;
+    QPushButton *m_singleValveCycleButton = nullptr;
     QPushButton *m_valveSwitch = nullptr;
     QComboBox *m_triggerMode = nullptr;
     QSpinBox *m_blowCount = nullptr;
     QSpinBox *m_blowInterval = nullptr;
     QSpinBox *m_testFrequency = nullptr;
     QSpinBox *m_agingFrequency = nullptr;
+    QSpinBox *m_singleValveTestTime = nullptr;
     QDoubleSpinBox *m_blowTime = nullptr;
     QDoubleSpinBox *m_chargeTime = nullptr;
     QDoubleSpinBox *m_stopChargeTime = nullptr;
@@ -64,4 +73,6 @@ private:
     QWidget *m_blowIntervalRow = nullptr;
     QWidget *m_testFrequencyRow = nullptr;
     QWidget *m_agingFrequencyRow = nullptr;
+    QWidget *m_singleValveTestTimeRow = nullptr;
+    QWidget *m_triggerModeRow = nullptr;
 };

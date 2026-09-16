@@ -67,6 +67,19 @@ ControlParameters AppSettings::loadControlParameters() const
     parameters.agingFrequencyHz = m_settings.contains(QStringLiteral("control/agingFrequencyHz"))
         ? m_settings.value(QStringLiteral("control/agingFrequencyHz"), parameters.agingFrequencyHz).toInt()
         : qBound(1, qRound(1000.0 / qMax(1, parameters.blowIntervalMs)), 1000);
+    if (m_settings.contains(QStringLiteral("control/singleValveTestTimeMs"))) {
+        parameters.singleValveTestTimeMs = m_settings.value(
+            QStringLiteral("control/singleValveTestTimeMs"),
+            parameters.singleValveTestTimeMs
+        ).toInt();
+    } else {
+        // Migrate the previous seconds-based setting to milliseconds once.
+        const int legacySeconds = m_settings.value(
+            QStringLiteral("control/singleValveTestTimeSec"),
+            parameters.singleValveTestTimeMs / 1000
+        ).toInt();
+        parameters.singleValveTestTimeMs = qBound(1, legacySeconds * 1000, 86400000);
+    }
     parameters.blowTimeMs = m_settings.value(QStringLiteral("control/blowTimeMs"), parameters.blowTimeMs).toDouble();
     parameters.chargeTimeMs = m_settings.value(QStringLiteral("control/chargeTimeMs"), parameters.chargeTimeMs).toDouble();
     parameters.stopChargeTimeMs = m_settings.value(QStringLiteral("control/stopChargeTimeMs"), parameters.stopChargeTimeMs).toDouble();
@@ -88,6 +101,7 @@ void AppSettings::saveControlParameters(const ControlParameters &parameters) con
     m_settings.setValue(QStringLiteral("control/blowIntervalMs"), parameters.blowIntervalMs);
     m_settings.setValue(QStringLiteral("control/testFrequencyHz"), parameters.testFrequencyHz);
     m_settings.setValue(QStringLiteral("control/agingFrequencyHz"), parameters.agingFrequencyHz);
+    m_settings.setValue(QStringLiteral("control/singleValveTestTimeMs"), parameters.singleValveTestTimeMs);
     m_settings.setValue(QStringLiteral("control/blowTimeMs"), parameters.blowTimeMs);
     m_settings.setValue(QStringLiteral("control/chargeTimeMs"), parameters.chargeTimeMs);
     m_settings.setValue(QStringLiteral("control/stopChargeTimeMs"), parameters.stopChargeTimeMs);

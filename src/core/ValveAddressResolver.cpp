@@ -48,6 +48,17 @@ std::optional<CommandPacket> ValveAddressResolver::buildSingleValveCommand(const
     return packet;
 }
 
+std::optional<CommandPacket> ValveAddressResolver::buildValveOffCommand(const int channel, const int valveNumber)
+{
+    auto packet = buildSingleValveCommand(channel, valveNumber);
+    if (!packet.has_value()) {
+        return std::nullopt;
+    }
+
+    packet->data16 = 0;
+    return packet;
+}
+
 QList<int> ValveAddressResolver::resolveAbnormalChannels(const quint16 bitmap)
 {
     QList<int> channels;

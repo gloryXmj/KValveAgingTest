@@ -14,7 +14,7 @@ public:
 
     int valveNumber() const;
     bool isPulsing() const;
-    void pulse(int durationMs = 50);
+    void pulse(int durationMs = 10);
     void setLargeTouchMode(bool enabled);
     void setContinuous(bool enabled);
 

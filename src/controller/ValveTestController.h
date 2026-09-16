@@ -31,6 +31,7 @@ public:
 
 signals:
     void commandRejected(const QString &reason);
+    void commandFinished(const CommandPacket &packet, bool successful);
     void logGenerated(const QString &direction, const QString &hex, const QString &description);
     void valveActionConfirmed(int channel, const QList<int> &valveNumbers);
     void channelAlarmUpdated(const QList<int> &abnormalChannels);
